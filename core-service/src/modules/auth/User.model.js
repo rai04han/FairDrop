@@ -76,16 +76,11 @@ const userSchema = new mongoose.Schema(
 // This runs every time a user is created or their password is changed.
 // bcrypt adds a random salt so even identical passwords produce different hashes.
 
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
   // Only hash if the password field was modified (not on every save)
-  if (!this.isModified('password_hash')) return next();
+  if (!this.isModified('password_hash')) return;
 
-  try {
-    this.password_hash = await bcrypt.hash(this.password_hash, SALT_ROUNDS);
-    next();
-  } catch (error) {
-    next(error);
-  }
+  this.password_hash = await bcrypt.hash(this.password_hash, SALT_ROUNDS);
 });
 
 // ── Instance method: compare a candidate password against the stored hash ──
