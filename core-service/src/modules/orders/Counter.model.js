@@ -34,7 +34,7 @@ counterSchema.statics.getNextOrderId = async function () {
   const counter = await this.findOneAndUpdate(
     { _id: key },
     { $inc: { sequence: 1 } },
-    { new: true, upsert: true }
+    { returnDocument: 'after', upsert: true }
   );
 
   // Format: ORD-YYYYMMDD-NNNN
