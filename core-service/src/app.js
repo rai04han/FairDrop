@@ -10,6 +10,7 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes = require('./modules/auth/auth.routes');
+const orderRoutes = require('./modules/orders/order.routes');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use(cors());
 // ── Routes ─────────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRoutes);
+app.use('/api/orders', orderRoutes);
 
 // Health check — useful for verifying the server is running
 app.get('/health', (req, res) => {
