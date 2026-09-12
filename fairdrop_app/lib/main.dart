@@ -1,121 +1,307 @@
+// ============================================================================
+// FairDrop Flutter App — Main Entry Point
+// ============================================================================
+// Owner: Shared (Raihan + Harikrishnan)
+//
+// PURPOSE:
+//   This is the FIRST file that runs when the app starts.
+//   It sets up:
+//     1. The app's visual theme (colors, fonts, dark mode)
+//     2. The navigation routes (which screen to show for each URL path)
+//     3. The home screen (landing page with buttons to each feature)
+//
+// HOW FLUTTER APPS START:
+//   main() → runApp() → MaterialApp → HomeScreen
+//   That's it. Every Flutter app follows this exact startup sequence.
+// ============================================================================
+
+// 'package:flutter/material.dart' gives us ALL the UI widgets:
+// Text, Button, Scaffold, AppBar, Colors, Icons, etc.
+// Almost every Dart file in a Flutter app imports this.
 import 'package:flutter/material.dart';
 
+// Import screen files (each screen is a separate file).
+// These are placeholder screens for now — real implementations
+// will be built on separate branches (Week 9–12).
+import 'screens/pay_breakdown_screen.dart';
+import 'screens/rider_dashboard_screen.dart';
+import 'screens/admin_panel_screen.dart';
+
+// ============================================================================
+// main() — The very first function that runs
+// ============================================================================
+// Every Dart program starts here, just like main() in C or Java.
+// runApp() takes a Widget and makes it the root of the entire app.
 void main() {
-  runApp(const MyApp());
+  runApp(const FairDropApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+// ============================================================================
+// FairDropApp — The root widget of the application
+// ============================================================================
+// StatelessWidget = a widget that never changes after it's built.
+// The app configuration (theme, routes) is fixed, so StatelessWidget is correct.
+//
+// 'const' means this widget is compile-time constant — Flutter can
+// optimize it by creating it only once and reusing it.
+class FairDropApp extends StatelessWidget {
+  const FairDropApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    // MaterialApp is Flutter's top-level widget for Material Design apps.
+    // It provides: theme, navigation, routing, and app-wide settings.
     return MaterialApp(
-      title: 'Flutter Demo',
+      // ── App metadata ──────────────────────────────────────────────────
+      title: 'FairDrop',
+
+      // Hide the red "DEBUG" banner in the top-right corner
+      debugShowCheckedModeBanner: false,
+
+      // ── Theme ─────────────────────────────────────────────────────────
+      // This defines the visual style for the ENTIRE app.
+      // Every screen inherits these colors, fonts, and styles.
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        // colorSchemeSeed picks a base color and generates a harmonious
+        // palette (primary, secondary, surface, background, error, etc.)
+        colorSchemeSeed: const Color(0xFF00897B), // Teal 600 — worker equity theme
+        brightness: Brightness.light,
+
+        // useMaterial3 enables Material Design 3 (Google's latest design system)
+        // Gives you rounded corners, updated buttons, and modern elevation
+        useMaterial3: true,
+
+        // AppBar theme — the top bar on every screen
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          elevation: 0,
+        ),
+
+        // Card theme — for the info cards on dashboard and breakdown screens
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+
+      // ── Dark theme ────────────────────────────────────────────────────
+      // Automatically used when the device is in dark mode.
+      darkTheme: ThemeData(
+        colorSchemeSeed: const Color(0xFF00897B),
+        brightness: Brightness.dark,
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          elevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+
+      // Use system setting (light/dark) — respects user's device preference
+      themeMode: ThemeMode.system,
+
+      // ── Routes ────────────────────────────────────────────────────────
+      // Routes map URL-like paths to screen widgets.
+      // Navigator.pushNamed(context, '/pay-breakdown') → shows PayBreakdownScreen
+      //
+      // '/' is the home route — shown when the app first opens.
+      initialRoute: '/',
+      routes: {
+        '/':                (context) => const HomeScreen(),
+        '/pay-breakdown':   (context) => const PayBreakdownScreen(),
+        '/rider-dashboard': (context) => const RiderDashboardScreen(),
+        '/admin-panel':     (context) => const AdminPanelScreen(),
+        // Hari's screens will be added here during integration (Week 10):
+        // '/login':         (context) => const LoginScreen(),
+        // '/order-accept':  (context) => const OrderAcceptanceScreen(),
+        // '/zone-map':      (context) => const ZoneMapScreen(),
+      },
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+// ============================================================================
+// HomeScreen — Landing page with navigation to all features
+// ============================================================================
+// This is a temporary home screen for development.
+// In the final app, the Login screen (Hari's) will be the first screen,
+// and this becomes the rider's main menu after login.
+//
+// StatelessWidget because this screen has no changing state — it's just
+// a list of navigation buttons.
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    // 'Theme.of(context)' reads the theme we defined in MaterialApp above.
+    // This way, if we change colors in the theme, all screens update automatically.
+    final theme = Theme.of(context);
+
+    // Scaffold is the basic screen structure: AppBar (top) + Body (content).
+    // Almost every screen in Flutter uses Scaffold.
     return Scaffold(
+      // ── App Bar ─────────────────────────────────────────────────────
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('FairDrop'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+
+      // ── Body ────────────────────────────────────────────────────────
+      // SafeArea prevents content from being hidden behind the status bar
+      // or phone notch.
+      body: SafeArea(
+        child: Padding(
+          // EdgeInsets.all(16) adds 16 pixels of space on all four sides.
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            // Column stacks children vertically (top to bottom).
+            // CrossAxisAlignment.stretch makes children fill the full width.
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Header ──────────────────────────────────────────────
+              Text(
+                'Pay Transparency Engine',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Algorithmically fair pay for gig delivery workers',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+
+              // ── Navigation Cards ────────────────────────────────────
+              // Each card navigates to a different screen when tapped.
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.receipt_long,
+                title: 'Pay Breakdown',
+                subtitle: 'Calculate and view delivery pay with line-by-line transparency',
+                route: '/pay-breakdown',
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 12),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.bar_chart,
+                title: 'Rider Dashboard',
+                subtitle: 'Earnings history and FairDrop vs cliff-bonus comparison',
+                route: '/rider-dashboard',
+                color: theme.colorScheme.tertiary,
+              ),
+              const SizedBox(height: 12),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.admin_panel_settings,
+                title: 'Admin Panel',
+                subtitle: 'Configure pay constants with 7-day advance notice',
+                route: '/admin-panel',
+                color: theme.colorScheme.secondary,
+              ),
+
+              // Spacer pushes the version text to the bottom of the screen.
+              const Spacer(),
+
+              // ── Footer ─────────────────────────────────────────────
+              Text(
+                'FairDrop v1.0.0 — MCA Mini Project 23MCAM307',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+
+  // ── Helper method to build a navigation card ──────────────────────────────
+  //
+  // This is a private method (starts with '_') that creates a tappable card.
+  // We extracted it to avoid repeating the same Card + ListTile code 3 times.
+  //
+  // 'Widget' is the return type — everything visible in Flutter is a Widget.
+  Widget _buildNavCard({
+    required BuildContext context, // needed for navigation
+    required IconData icon,       // the icon to show (e.g., Icons.receipt_long)
+    required String title,        // card title
+    required String subtitle,     // card description
+    required String route,        // route to navigate to (e.g., '/pay-breakdown')
+    required Color color,         // icon and accent color
+  }) {
+    return Card(
+      // InkWell adds a tap ripple effect AND an onTap handler.
+      child: InkWell(
+        // borderRadius makes the ripple effect follow the card's rounded corners.
+        borderRadius: BorderRadius.circular(12),
+
+        // onTap fires when the user taps this card.
+        // Navigator.pushNamed() navigates to the route we specified.
+        // Think of it as: "push a new screen onto the navigation stack."
+        // The user can press the back button to return here.
+        onTap: () => Navigator.pushNamed(context, route),
+
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            // Row stacks children horizontally (left to right).
+            children: [
+              // Icon in a colored circle
+              CircleAvatar(
+                backgroundColor: color.withValues(alpha: 0.1),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(width: 16),
+
+              // Expanded makes this child take up all remaining horizontal space.
+              // Without Expanded, long text would overflow off the screen.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Arrow icon on the right — visual hint that this is tappable
+              Icon(
+                Icons.chevron_right,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
