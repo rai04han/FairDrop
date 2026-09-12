@@ -1,30 +1,26 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// ============================================================================
+// FairDrop — Widget Test
+// ============================================================================
+// This test verifies that the app starts without crashing.
+// Run with: flutter test
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+// Import our app (FairDropApp, not the old MyApp)
 import 'package:fairdrop_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('App starts and shows home screen', (WidgetTester tester) async {
+    // Build the app and trigger a frame (renders the first screen)
+    await tester.pumpWidget(const FairDropApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify the home screen title is visible
+    expect(find.text('FairDrop'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify navigation cards are visible
+    expect(find.text('Pay Breakdown'), findsOneWidget);
+    expect(find.text('Rider Dashboard'), findsOneWidget);
+    expect(find.text('Admin Panel'), findsOneWidget);
   });
 }
