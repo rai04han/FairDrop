@@ -95,6 +95,11 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
   // Toggle switches for boolean fields
   bool _isSurgeActive = false;
 
+  // Counter for auto-generating unique order IDs.
+  // Each time "Calculate" is pressed, this increments so the order_id
+  // is always unique (prevents "order already processed" error).
+  int _orderCounter = 1;
+
   // ── Lifecycle: dispose() ──────────────────────────────────────────────
   // dispose() is called when this screen is removed from the widget tree
   // (e.g., user navigates back). We MUST dispose TextEditingControllers
@@ -128,11 +133,23 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
       final waitMins = int.tryParse(_waitMinsController.text) ?? 0;
       final activeHours = double.tryParse(_activeHoursController.text) ?? 0;
 
+      // Step 2b: Auto-generate a unique order ID using timestamp + counter.
+      // This prevents the "order already processed" error when testing
+      // multiple calculations without manually changing the order ID.
+      final now = DateTime.now();
+      final orderId = 'ORD-${now.year}${now.month.toString().padLeft(2, '0')}'
+          '${now.day.toString().padLeft(2, '0')}-'
+          '${_orderCounter.toString().padLeft(4, '0')}';
+      _orderCounter++;
+
+      // Update the order ID field so the user can see what was sent
+      _orderIdController.text = orderId;
+
       // Step 3: Call the API via our service layer
       // 'await' pauses here until the server responds
       final result = await ApiService.calculatePay(
         riderId: _riderIdController.text,
-        orderId: _orderIdController.text,
+        orderId: orderId,
         distanceKm: distance,
         isSurgeActive: _isSurgeActive,
         restaurantWaitMins: waitMins,
