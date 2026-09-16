@@ -1,0 +1,26 @@
+{
+  "name": "fairdrop-pay-service",
+  "version": "1.0.0",
+  "description": "FairDrop Pay Engine — Express server wrapping the linear pay calculation model with MySQL persistence",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "npx nodemon src/server.js",
+    "test": "node --test tests/payEngine.test.js",
+    "seed": "node src/seed.js"
+  },
+  "keywords": [
+    "fairdrop",
+    "gig-economy",
+    "pay-transparency",
+    "linear-pay"
+  ],
+  "author": "Raihan (25MCA026)",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mysql2": "^3.12.0"
+  }
+}
