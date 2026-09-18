@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'screens/pay_breakdown_screen.dart';
 import 'screens/rider_dashboard_screen.dart';
 import 'screens/admin_panel_screen.dart';
+import 'screens/login_screen.dart';        // Hari
+import 'screens/zone_map_screen.dart';     // Hari
 
 // ============================================================================
 // main() — The very first function that runs
@@ -112,16 +114,14 @@ class FairDropApp extends StatelessWidget {
       // Navigator.pushNamed(context, '/pay-breakdown') → shows PayBreakdownScreen
       //
       // '/' is the home route — shown when the app first opens.
-      initialRoute: '/',
+      initialRoute: '/login',
       routes: {
         '/':                (context) => const HomeScreen(),
+        '/login':           (context) => const LoginScreen(),      // Hari
+        '/zone-map':        (context) => const ZoneMapScreen(),    // Hari
         '/pay-breakdown':   (context) => const PayBreakdownScreen(),
         '/rider-dashboard': (context) => const RiderDashboardScreen(),
         '/admin-panel':     (context) => const AdminPanelScreen(),
-        // Hari's screens will be added here during integration (Week 10):
-        // '/login':         (context) => const LoginScreen(),
-        // '/order-accept':  (context) => const OrderAcceptanceScreen(),
-        // '/zone-map':      (context) => const ZoneMapScreen(),
       },
     );
   }
@@ -213,6 +213,16 @@ class HomeScreen extends StatelessWidget {
                 subtitle: 'Configure pay constants with 7-day advance notice',
                 route: '/admin-panel',
                 color: theme.colorScheme.secondary,
+              ),
+              const SizedBox(height: 12),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.map,
+                title: 'Zone Map',
+                subtitle: 'View Kollam delivery zones on an interactive map',
+                route: '/zone-map',
+                color: Colors.indigo,
               ),
 
               // Spacer pushes the version text to the bottom of the screen.
