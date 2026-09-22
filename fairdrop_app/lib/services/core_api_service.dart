@@ -69,7 +69,7 @@ class CoreApiService {
       body: jsonEncode({
         'name': name,
         'email': email,
-        'password_hash': password,
+        'password': password,
         'role': role,
       }),
     );
@@ -88,7 +88,7 @@ class CoreApiService {
     final response = await http.post(
       Uri.parse('$_baseUrl/api/auth/login'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password_hash': password}),
+      body: jsonEncode({'email': email, 'password': password}),
     );
 
     final data = jsonDecode(response.body);
