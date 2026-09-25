@@ -72,8 +72,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Navigate to home after successful login/register
-      Navigator.pushReplacementNamed(context, '/');
+      // Navigate based on user role
+      final role = result['user']['role'] as String;
+      String route;
+      switch (role) {
+        case 'customer':
+          route = '/orders';
+        case 'rider':
+          route = '/rider-dashboard';
+        case 'admin':
+          route = '/';
+        case 'restaurant':
+          route = '/';
+        default:
+          route = '/';
+      }
+      Navigator.pushReplacementNamed(context, route);
 
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
