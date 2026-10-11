@@ -14,7 +14,9 @@ dependencies:
   fl_chart: ^1.0.0       # Charts for FairDrop vs cliff-bonus comparison
   flutter_map: ^7.0.2    # OpenStreetMap widget for zone map (Hari)
   latlong2: ^0.9.1       # Lat/Lng utilities for flutter_map (Hari)
-  shared_preferences: ^2.3.4  # Store JWT token locally (Hari)
+  shared_preferences: ^2.3.4  # Non-sensitive local storage
+  flutter_secure_storage: ^9.2.2  # Secure JWT token storage (FR-3)
+  provider: ^6.1.2       # State management (Architecture §7)
 
 dev_dependencies:
   flutter_test:

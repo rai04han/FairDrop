@@ -53,6 +53,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   String? _errorMessage;
   String? _successMessage;
 
+  // FR-41: Effective-from date for the new config (must be ≥ today + 7 days)
+  DateTime? _selectedEffectiveDate;
+
   // ── Form Controllers ──────────────────────────────────────────────────
   // Each controller holds the value of one form field.
   // Initialized empty — filled with current values after API loads.
@@ -148,10 +151,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   // Sends the new config values to the server.
   // Called after the user confirms the 7-day notice dialog.
   Future<void> _updateConfig() async {
-    // Validate change reason is not empty
+    // Validate change reason is not empty (FR-42)
     if (_changeReasonController.text.trim().isEmpty) {
       setState(() {
         _errorMessage = 'Change reason is required (audit trail requirement)';
+      });
+      return;
+    }
+
+    // Validate effective date is selected (FR-41)
+    if (_selectedEffectiveDate == null) {
+      setState(() {
+        _errorMessage = 'Please select an effective-from date (must be at least 7 days from today)';
       });
       return;
     }
@@ -163,6 +174,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     });
 
     try {
+      // Format effective date as YYYY-MM-DD for the API
+      final effectiveDateStr =
+          '${_selectedEffectiveDate!.year}-'
+          '${_selectedEffectiveDate!.month.toString().padLeft(2, "0")}-'
+          '${_selectedEffectiveDate!.day.toString().padLeft(2, "0")}';
+
       // PUT /api/admin/pay-config
       final response = await ApiService.updatePayConfig(
         baseRate: double.tryParse(_baseRateController.text) ?? 0,
@@ -172,6 +189,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             int.tryParse(_waitThresholdController.text) ?? 0,
         waitCompensation: double.tryParse(_waitCompController.text) ?? 0,
         minWagePerHour: double.tryParse(_minWageController.text) ?? 0,
+        effectiveFrom: effectiveDateStr,
         changeReason: _changeReasonController.text.trim(),
       );
 
@@ -184,6 +202,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
 
       // Clear the change reason field after successful update
       _changeReasonController.clear();
+      _selectedEffectiveDate = null;
 
       // Reload config to show the updated values
       await _loadConfig();
@@ -207,10 +226,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   // This is Fairwork P6 (Fair Contracts): workers must receive advance
   // notice before pay structure changes take effect.
   void _showConfirmationDialog() {
-    // Validate change reason first
+    // Validate change reason first (FR-42)
     if (_changeReasonController.text.trim().isEmpty) {
       setState(() {
         _errorMessage = 'Please enter a change reason before updating';
+      });
+      return;
+    }
+
+    // Validate effective date is selected (FR-41)
+    if (_selectedEffectiveDate == null) {
+      setState(() {
+        _errorMessage = 'Please select an effective-from date before updating';
       });
       return;
     }
@@ -269,7 +296,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'New config will take effect 7 days from today',
+                        'Effective from: ${_selectedEffectiveDate!.day}/${_selectedEffectiveDate!.month}/${_selectedEffectiveDate!.year}',
                         style: TextStyle(
                           color: Theme.of(context)
                               .colorScheme
@@ -611,6 +638,49 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 helperText: 'Required — stored as audit trail (Fairwork P6)',
                 helperStyle: TextStyle(
                   color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Effective Date Picker (FR-41) ─────────────────────────
+            // FR-41: Cannot select earlier than today + 7 days
+            InkWell(
+              onTap: () async {
+                final minDate = DateTime.now().add(const Duration(days: 7));
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _selectedEffectiveDate ?? minDate,
+                  firstDate: minDate,
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  helpText: 'Select effective date (min 7 days notice)',
+                );
+                if (picked != null) {
+                  setState(() => _selectedEffectiveDate = picked);
+                }
+              },
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: 'Effective From Date *',
+                  prefixIcon: const Icon(Icons.calendar_today),
+                  border: const OutlineInputBorder(),
+                  helperText: 'Must be at least 7 days from today (Fairwork P6)',
+                  helperStyle: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                child: Text(
+                  _selectedEffectiveDate != null
+                      ? '${_selectedEffectiveDate!.day.toString().padLeft(2, "0")}/'
+                        '${_selectedEffectiveDate!.month.toString().padLeft(2, "0")}/'
+                        '${_selectedEffectiveDate!.year}'
+                      : 'Tap to select date',
+                  style: TextStyle(
+                    color: _selectedEffectiveDate != null
+                        ? theme.colorScheme.onSurface
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),

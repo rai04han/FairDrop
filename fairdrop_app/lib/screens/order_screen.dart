@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 import '../services/core_api_service.dart';
+import '../services/exceptions.dart';
 
 class OrderScreen extends StatefulWidget {
   const OrderScreen({super.key});
@@ -78,23 +79,15 @@ class _PlaceOrderTabState extends State<_PlaceOrderTab> {
   String? _successMessage;
   String? _errorMessage;
 
-  // ── Seeded restaurants (from seed/index.js) ───────────────────────────
-  final _restaurants = [
-    {
-      'name': 'Hotel Arun',
-      'email': 'arun@fairdrop.in',
-      'label': 'Hotel Arun, Chinnakkada',
-      'lat': 8.8855,
-      'lng': 76.5950,
-    },
-    {
-      'name': 'Cafe Marina',
-      'email': 'marina@fairdrop.in',
-      'label': 'Cafe Marina, Kollam Beach',
-      'lat': 8.8875,
-      'lng': 76.6100,
-    },
-  ];
+  // ── Seeded restaurants (populated from GET /api/orders/restaurants) ──────
+  List<Map<String, dynamic>> _restaurants = [];
+  bool _isLoadingRestaurants = false;
+
+  // Legacy static addresses for known restaurant emails (fallback for demo)
+  final _restaurantAddresses = {
+    'arun@fairdrop.in': {'label': 'Hotel Arun, Chinnakkada', 'lat': 8.8855, 'lng': 76.5950},
+    'marina@fairdrop.in': {'label': 'Cafe Marina, Kollam Beach', 'lat': 8.8875, 'lng': 76.6100},
+  };
 
   int _selectedRestaurant = 0;
 
@@ -121,11 +114,38 @@ class _PlaceOrderTabState extends State<_PlaceOrderTab> {
   ];
 
   @override
-  void dispose() {
-    _itemNameController.dispose();
-    _itemPriceController.dispose();
-    _deliveryLabelController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _fetchRestaurants();
+  }
+
+  Future<void> _fetchRestaurants() async {
+    setState(() => _isLoadingRestaurants = true);
+    try {
+      final data = await CoreApiService.getRestaurants();
+      final list = (data['restaurants'] as List<dynamic>? ?? []);
+      setState(() {
+        _restaurants = list
+            .map((r) {
+              final rest = r as Map<String, dynamic>;
+              final email = rest['email'] as String? ?? '';
+              final addr = _restaurantAddresses[email];
+              return {
+                '_id': rest['_id'] as String? ?? '',
+                'name': rest['name'] as String? ?? 'Restaurant',
+                'email': email,
+                'label': addr?['label'] ?? rest['name'] ?? 'Unknown',
+                'lat': addr?['lat'] ?? 8.8855,
+                'lng': addr?['lng'] ?? 76.5950,
+              };
+            })
+            .toList();
+        _isLoadingRestaurants = false;
+      });
+    } catch (_) {
+      // Non-critical — fall through to show empty restaurant list
+      setState(() => _isLoadingRestaurants = false);
+    }
   }
 
   void _addQuickItem(Map<String, dynamic> item) {
@@ -177,6 +197,10 @@ class _PlaceOrderTabState extends State<_PlaceOrderTab> {
       setState(() => _errorMessage = 'Add at least one item to your order.');
       return;
     }
+    if (_restaurants.isEmpty) {
+      setState(() => _errorMessage = 'No restaurants available. Check your connection.');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -185,22 +209,16 @@ class _PlaceOrderTabState extends State<_PlaceOrderTab> {
     });
 
     try {
-      // We need the restaurant's MongoDB _id. Fetch via login to get it.
-      // For demo, we'll use a workaround — login as the restaurant to get ID.
+      // BUG-2 fix: use pre-fetched restaurant _id, no login impersonation needed
       final restaurant = _restaurants[_selectedRestaurant];
+      final restaurantId = restaurant['_id'] as String;
 
-      // Get restaurant ID by temporarily logging in (demo workaround)
-      final restaurantData = await _getRestaurantId(restaurant['email'] as String);
-
-      // Re-login as the customer (restore token)
-      final customerToken = await CoreApiService.getToken();
-      if (customerToken == null) {
-        setState(() => _errorMessage = 'Please login again.');
-        return;
+      if (restaurantId.isEmpty) {
+        throw Exception('Restaurant ID not available. Try refreshing.');
       }
 
       final result = await CoreApiService.placeOrder(
-        restaurantId: restaurantData,
+        restaurantId: restaurantId,
         items: _cartItems.map((item) => {
               'name': item['name'],
               'quantity': item['quantity'],
@@ -228,30 +246,20 @@ class _PlaceOrderTabState extends State<_PlaceOrderTab> {
       // Switch to history tab
       widget.onOrderPlaced();
     } on ApiException catch (e) {
-      setState(() => _errorMessage = e.body['message'] ?? 'Order failed.');
+      setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = 'Error: $e');
+      setState(() => _errorMessage = 'Error: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // Demo helper: get restaurant MongoDB _id from seed data
-  // In production, the app would have a restaurant listing API
-  Future<String> _getRestaurantId(String email) async {
-    // Save current token
-    final currentToken = await CoreApiService.getToken();
-
-    // Login as restaurant to get its _id
-    final data = await CoreApiService.login(email, 'password123');
-    final restaurantId = data['user']['_id'] as String;
-
-    // Restore original customer token
-    if (currentToken != null) {
-      await CoreApiService.saveToken(currentToken);
-    }
-
-    return restaurantId;
+  @override
+  void dispose() {
+    _itemNameController.dispose();
+    _itemPriceController.dispose();
+    _deliveryLabelController.dispose();
+    super.dispose();
   }
 
   @override
@@ -271,18 +279,28 @@ class _PlaceOrderTabState extends State<_PlaceOrderTab> {
                 style: theme.textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            SegmentedButton<int>(
-              segments: _restaurants.asMap().entries.map((e) {
-                return ButtonSegment(
-                  value: e.key,
-                  label: Text(e.value['name'] as String),
-                  icon: const Icon(Icons.restaurant),
-                );
-              }).toList(),
-              selected: {_selectedRestaurant},
-              onSelectionChanged: (s) =>
-                  setState(() => _selectedRestaurant = s.first),
-            ),
+            if (_isLoadingRestaurants)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_restaurants.isEmpty)
+              const Text('No restaurants available. Check connection.')
+            else
+              SegmentedButton<int>(
+                segments: _restaurants.asMap().entries.map((e) {
+                  return ButtonSegment(
+                    value: e.key,
+                    label: Text(e.value['name'] as String),
+                    icon: const Icon(Icons.restaurant),
+                  );
+                }).toList(),
+                selected: {_selectedRestaurant.clamp(0, _restaurants.length - 1)},
+                onSelectionChanged: (s) =>
+                    setState(() => _selectedRestaurant = s.first),
+              ),
             const SizedBox(height: 20),
 
             // ── Quick Menu ──────────────────────────────────────────
@@ -687,7 +705,7 @@ class _OrderHistoryTabState extends State<_OrderHistoryTab> {
                           size: 16, color: _statusColor(entry['status'] as String)),
                       title: Text((entry['status'] as String).toUpperCase()),
                       trailing: Text(
-                        _formatDate(entry['changed_at'] as String),
+                        _formatDate(entry['changed_at']?.toString()),
                         style: theme.textTheme.bodySmall,
                       ),
                     );
@@ -702,7 +720,8 @@ class _OrderHistoryTabState extends State<_OrderHistoryTab> {
     );
   }
 
-  String _formatDate(String isoDate) {
+  String _formatDate(String? isoDate) {
+    if (isoDate == null) return '—';
     final date = DateTime.tryParse(isoDate);
     if (date == null) return isoDate;
     final local = date.toLocal();

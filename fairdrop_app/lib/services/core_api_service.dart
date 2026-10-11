@@ -3,56 +3,96 @@
 // ============================================================================
 // Owner: Hari (25MCA025)
 //
-// PURPOSE:
-//   HTTP client for Hari's core-service (auth, orders, zones).
-//   Separate from Raihan's api_service.dart which talks to pay-service (3001).
-//
-// USAGE:
-//   final token = await CoreApiService.login('hari@fairdrop.in', 'password123');
-//   final zones = await CoreApiService.getZoneMap(token);
+// Fixes in this version:
+//   BUG-1  — Removed duplicate ApiException; now imported from exceptions.dart
+//   BUG-4  — null token guard: throws 401 before sending "Bearer null"
+//   BUG-7  — FR-3: JWT stored in flutter_secure_storage, not shared_preferences
+//   BUG-13 — FR-NFR: 10-second timeout on every HTTP call
+//   BUG-15 — 401 global handling: clears session
+//   AppConfig — URLs come from app_config.dart (no more scattered localhost)
 // ============================================================================
 
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'exceptions.dart';
+import '../config/app_config.dart';
 
 class CoreApiService {
-  // Core-service runs on port 3003 (Hari's backend)
-  // Chrome: localhost, Android emulator: 10.0.2.2, Physical: your WiFi IP
-  static const String _baseUrl = 'http://localhost:3003';
+  // Base URL from central config (Android emulator: 10.0.2.2)
+  static String get _baseUrl => AppConfig.coreServiceUrl;
 
-  // ── Token storage ─────────────────────────────────────────────────────────
+  // flutter_secure_storage instance — AES-256 encrypted on Android (Keystore)
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
-  /// Save JWT token to device storage
-  static Future<void> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('jwt_token', token);
-  }
+  // Storage keys
+  static const _keyToken = 'jwt_token';
+  static const _keyRole  = 'user_role';
+  static const _keyUserId = 'user_id';
 
-  /// Read JWT token from device storage
-  static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('jwt_token');
-  }
+  // ── Token Storage ─────────────────────────────────────────────────────────
 
-  /// Save user role for role-based UI
-  static Future<void> saveUserRole(String role) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_role', role);
-  }
+  /// Save JWT token to secure encrypted storage (FR-3)
+  static Future<void> saveToken(String token) =>
+      _storage.write(key: _keyToken, value: token);
+
+  /// Read JWT token from secure storage.
+  /// Returns null if not logged in.
+  static Future<String?> getToken() => _storage.read(key: _keyToken);
+
+  /// Save user role for role-based routing
+  static Future<void> saveUserRole(String role) =>
+      _storage.write(key: _keyRole, value: role);
 
   /// Get saved user role
-  static Future<String?> getUserRole() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('user_role');
+  static Future<String?> getUserRole() => _storage.read(key: _keyRole);
+
+  /// Save user ID (used to pass correct rider ID to pay-service)
+  static Future<void> saveUserId(String id) =>
+      _storage.write(key: _keyUserId, value: id);
+
+  /// Get saved user ID
+  static Future<String?> getUserId() => _storage.read(key: _keyUserId);
+
+  /// Clear all auth data on logout or 401 (FR-4)
+  static Future<void> logout() async {
+    await _storage.delete(key: _keyToken);
+    await _storage.delete(key: _keyRole);
+    await _storage.delete(key: _keyUserId);
   }
 
-  /// Clear token and role on logout
-  static Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('jwt_token');
-    await prefs.remove('user_role');
+  // ── Internal helpers ──────────────────────────────────────────────────────
+
+  /// Returns auth headers. Throws ApiException(401) if token is null (BUG-4).
+  static Future<Map<String, String>> _authHeaders() async {
+    final token = await getToken();
+    if (token == null) {
+      throw const ApiException(401, {'message': 'Not authenticated. Please log in.'});
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
   }
+
+  /// Handles 401 responses globally: clears session (FR-4).
+  static ApiException _handleError(int statusCode, Map<String, dynamic> body) {
+    if (statusCode == 401) {
+      // Fire-and-forget: clear session on 401
+      logout();
+    }
+    return ApiException(statusCode, body);
+  }
+
+  /// Wraps an HTTP future with a timeout (BUG-13 / NFR §8).
+  static Future<http.Response> _withTimeout(Future<http.Response> request) =>
+      request.timeout(
+        AppConfig.httpTimeout,
+        onTimeout: () => throw const TimeoutApiException(),
+      );
 
   // ── Auth API ──────────────────────────────────────────────────────────────
 
@@ -63,57 +103,67 @@ class CoreApiService {
     required String password,
     required String role,
   }) async {
-    final response = await http.post(
+    final response = await _withTimeout(http.post(
       Uri.parse('$_baseUrl/api/auth/register'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'name': name,
-        'email': email,
-        'password': password,
-        'role': role,
-      }),
-    );
+      body: jsonEncode({'name': name, 'email': email, 'password': password, 'role': role}),
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 201) {
-      await saveToken(data['token']);
-      await saveUserRole(data['user']['role']);
+      await saveToken(data['token'] as String);
+      await saveUserRole(data['user']['role'] as String);
+      await saveUserId(data['user']['_id'] as String);
       return data;
     }
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
   /// POST /api/auth/login
   static Future<Map<String, dynamic>> login(String email, String password) async {
-    final response = await http.post(
+    final response = await _withTimeout(http.post(
       Uri.parse('$_baseUrl/api/auth/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email, 'password': password}),
-    );
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200) {
-      await saveToken(data['token']);
-      await saveUserRole(data['user']['role']);
+      await saveToken(data['token'] as String);
+      await saveUserRole(data['user']['role'] as String);
+      await saveUserId(data['user']['_id'] as String);
       return data;
     }
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
-  /// GET /api/auth/me
+  /// GET /api/auth/me — validates token and returns current user
   static Future<Map<String, dynamic>> getMe() async {
-    final token = await getToken();
-    final response = await http.get(
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/auth/me'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+      headers: headers,
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200) return data;
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
   // ── Orders API ────────────────────────────────────────────────────────────
+
+  /// GET /api/orders/restaurants — lists all restaurants (BUG-2 fix)
+  static Future<Map<String, dynamic>> getRestaurants() async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
+      Uri.parse('$_baseUrl/api/orders/restaurants'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
 
   /// POST /api/orders
   static Future<Map<String, dynamic>> placeOrder({
@@ -123,13 +173,10 @@ class CoreApiService {
     required Map<String, dynamic> restaurantAddress,
     required double distanceKm,
   }) async {
-    final token = await getToken();
-    final response = await http.post(
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.post(
       Uri.parse('$_baseUrl/api/orders'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: headers,
       body: jsonEncode({
         'restaurant_id': restaurantId,
         'items': items,
@@ -137,50 +184,50 @@ class CoreApiService {
         'restaurant_address': restaurantAddress,
         'distance_km': distanceKm,
       }),
-    );
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 201) return data;
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
   /// GET /api/orders/:id
   static Future<Map<String, dynamic>> getOrder(String orderId) async {
-    final token = await getToken();
-    final response = await http.get(
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/orders/$orderId'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+      headers: headers,
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200) return data;
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
   /// GET /api/orders/history
   static Future<Map<String, dynamic>> getOrderHistory() async {
-    final token = await getToken();
-    final response = await http.get(
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/orders/history'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+      headers: headers,
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200) return data;
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
   /// GET /api/orders/rider/active
   static Future<Map<String, dynamic>> getRiderActiveOrder() async {
-    final token = await getToken();
-    final response = await http.get(
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/orders/rider/active'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+      headers: headers,
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200) return data;
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
   /// PATCH /api/orders/:id/status
@@ -190,48 +237,66 @@ class CoreApiService {
     int? restaurantWaitMins,
     Map<String, dynamic>? delayContext,
   }) async {
-    final token = await getToken();
+    final headers = await _authHeaders();
     final body = <String, dynamic>{'new_status': newStatus};
     if (restaurantWaitMins != null) body['restaurant_wait_mins'] = restaurantWaitMins;
     if (delayContext != null) body['delay_context'] = delayContext;
 
-    final response = await http.patch(
+    final response = await _withTimeout(http.patch(
       Uri.parse('$_baseUrl/api/orders/$orderId/status'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: headers,
       body: jsonEncode(body),
-    );
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200) return data;
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
 
   // ── Zones API ─────────────────────────────────────────────────────────────
 
   /// GET /api/zones/map — returns GeoJSON FeatureCollection
   static Future<Map<String, dynamic>> getZoneMap() async {
-    final token = await getToken();
-    final response = await http.get(
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/zones/map'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+      headers: headers,
+    ));
 
-    final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode == 200) return data;
-    throw ApiException(response.statusCode, data);
+    throw _handleError(response.statusCode, data);
   }
-}
 
-// Reuse Raihan's exception pattern for consistency
-class ApiException implements Exception {
-  final int statusCode;
-  final Map<String, dynamic> body;
+  // ── Online/Offline Status ─────────────────────────────────────────────────
 
-  ApiException(this.statusCode, this.body);
+  /// POST /api/rider/status — set rider online/offline (FR-7)
+  /// Note: This endpoint may need to be added to core-service if not present.
+  static Future<Map<String, dynamic>> setRiderStatus({
+    required bool isOnline,
+  }) async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.post(
+      Uri.parse('$_baseUrl/api/rider/status'),
+      headers: headers,
+      body: jsonEncode({'is_online': isOnline}),
+    ));
 
-  @override
-  String toString() => 'ApiException($statusCode): ${body['message'] ?? body}';
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// GET /api/rider/stats/today — today's earnings and hours (FR-9)
+  static Future<Map<String, dynamic>> getTodayStats() async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
+      Uri.parse('$_baseUrl/api/rider/stats/today'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
 }

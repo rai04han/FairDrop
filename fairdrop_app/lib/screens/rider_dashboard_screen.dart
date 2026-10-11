@@ -20,8 +20,9 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-// Import our API service to fetch earnings history
+// Import our API services
 import '../services/api_service.dart';
+import '../services/core_api_service.dart'; // for getUserId() — BUG-10 fix
 
 // ============================================================================
 // RiderDashboardScreen — StatefulWidget
@@ -82,8 +83,18 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     });
 
     try {
-      // GET /api/pay/history/rider-001
-      final response = await ApiService.getPayHistory('rider-001');
+      // BUG-10 fix: use actual rider ID from secure storage, not hardcoded 'rider-001'
+      final riderId = await CoreApiService.getUserId();
+      if (riderId == null) {
+        setState(() {
+          _errorMessage = 'Rider ID not found. Please log in again.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // GET /api/pay/history/:rider_id
+      final response = await ApiService.getPayHistory(riderId);
       final earnings = response['earnings'] as List<dynamic>;
 
       // ── Compute summary statistics ──────────────────────────────────
@@ -116,7 +127,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       });
     } on ApiException catch (e) {
       setState(() {
-        _errorMessage = e.body['message'] ?? 'Failed to load earnings';
+        _errorMessage = e.message; // BUG-10 fix: use e.message not e.body
         _isLoading = false;
       });
     } catch (e) {
@@ -256,7 +267,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                 theme,
                 icon: Icons.account_balance_wallet,
                 label: 'Total Earned',
-                value: '₹${_totalEarned.toStringAsFixed(0)}',
+                value: '₹${_totalEarned.toStringAsFixed(2)}', // BUG-11: 2dp
                 color: theme.colorScheme.primary,
               ),
             ),
@@ -294,7 +305,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                 theme,
                 icon: Icons.shield,
                 label: 'Floor Top-ups',
-                value: '₹${_totalFloorTopup.toStringAsFixed(0)}',
+                value: '₹${_totalFloorTopup.toStringAsFixed(2)}', // BUG-11: 2dp
                 color: theme.colorScheme.secondary,
               ),
             ),
@@ -357,19 +368,38 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     // ── Prepare chart data ──────────────────────────────────────────────
     // For each delivery (1 to N), compute cumulative totals for both models.
 
-    // FairDrop cumulative: sum actual earnings from DB
+    // BUG-12 fix: Extend chart to at least 11 data points for
+    // the cliff bonus to be visible (cliff kicks in at delivery #10).
+    // If we have fewer real earnings, pad with simulated projections.
+    const int minChartPoints = 11;
+    final totalPoints = _earnings.length < minChartPoints
+        ? minChartPoints
+        : _earnings.length;
+
+    // FairDrop cumulative: use real data, then project linearly
     List<double> fairDropCumulative = [];
     double runningFairDrop = 0;
+    double avgPerDelivery = 0;
     for (final e in _earnings) {
       final pay = double.tryParse(e['total_delivery_pay'].toString()) ?? 0;
       final topup = double.tryParse(e['floor_topup'].toString()) ?? 0;
       runningFairDrop += pay + topup;
       fairDropCumulative.add(runningFairDrop);
     }
+    if (_earnings.isNotEmpty) {
+      avgPerDelivery = runningFairDrop / _earnings.length;
+    } else {
+      avgPerDelivery = 50.0; // reasonable default for projection
+    }
+    // Pad with projected values
+    while (fairDropCumulative.length < totalPoints) {
+      runningFairDrop += avgPerDelivery;
+      fairDropCumulative.add(runningFairDrop);
+    }
 
     // Cliff cumulative: simulate for same number of deliveries
     List<double> cliffCumulative = [];
-    for (int i = 1; i <= _earnings.length; i++) {
+    for (int i = 1; i <= totalPoints; i++) {
       cliffCumulative.add(_calculateCliffTotal(i));
     }
 
@@ -486,7 +516,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                   // ── Bar groups (one per delivery) ───────────────────
                   // Each group has 2 bars: FairDrop (green) + Cliff (red)
                   barGroups: List.generate(
-                    _earnings.length,
+                    totalPoints, // BUG-12: use totalPoints not _earnings.length
                     (index) => BarChartGroupData(
                       x: index,
                       barRods: [
@@ -630,7 +660,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
-                            '${distance} km',
+                            '$distance km',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),

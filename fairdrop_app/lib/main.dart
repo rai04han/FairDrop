@@ -26,10 +26,17 @@ import 'package:flutter/material.dart';
 import 'screens/pay_breakdown_screen.dart';
 import 'screens/rider_dashboard_screen.dart';
 import 'screens/admin_panel_screen.dart';
-import 'screens/login_screen.dart';        // Hari
-import 'screens/zone_map_screen.dart';     // Hari
-import 'screens/order_screen.dart';        // Hari
-import 'services/core_api_service.dart';   // Hari — logout
+import 'screens/login_screen.dart';
+import 'screens/zone_map_screen.dart';
+import 'screens/order_screen.dart';
+import 'screens/splash_screen.dart';            // FR-1
+import 'screens/rider_home_screen.dart';        // FR-7
+import 'screens/order_acceptance_screen.dart';  // FR-11
+import 'screens/active_delivery_screen.dart';   // FR-17
+import 'screens/onboarding_screen.dart';        // FR-46
+import 'screens/profile_screen.dart';           // FR-47
+import 'screens/unsupported_role_screen.dart';  // FR-6
+import 'services/core_api_service.dart';
 
 // ============================================================================
 // main() — The very first function that runs
@@ -116,15 +123,22 @@ class FairDropApp extends StatelessWidget {
       // Navigator.pushNamed(context, '/pay-breakdown') → shows PayBreakdownScreen
       //
       // '/' is the home route — shown when the app first opens.
-      initialRoute: '/login',
+      initialRoute: '/splash',
       routes: {
-        '/':                (context) => const HomeScreen(),
-        '/login':           (context) => const LoginScreen(),      // Hari
-        '/zone-map':        (context) => const ZoneMapScreen(),    // Hari
-        '/orders':          (context) => const OrderScreen(),     // Hari
-        '/pay-breakdown':   (context) => const PayBreakdownScreen(),
-        '/rider-dashboard': (context) => const RiderDashboardScreen(),
-        '/admin-panel':     (context) => const AdminPanelScreen(),
+        '/':                 (context) => const HomeScreen(),
+        '/splash':           (context) => const SplashScreen(),
+        '/login':            (context) => const LoginScreen(),
+        '/rider-home':       (context) => const RiderHomeScreen(),
+        '/order-acceptance': (context) => const OrderAcceptanceScreen(),
+        '/active-delivery':  (context) => const ActiveDeliveryScreen(),
+        '/onboarding':       (context) => const OnboardingScreen(),
+        '/profile':          (context) => const ProfileScreen(),
+        '/unsupported-role': (context) => const UnsupportedRoleScreen(),
+        '/zone-map':         (context) => const ZoneMapScreen(),
+        '/orders':           (context) => const OrderScreen(),
+        '/pay-breakdown':    (context) => const PayBreakdownScreen(),
+        '/rider-dashboard':  (context) => const RiderDashboardScreen(),
+        '/admin-panel':      (context) => const AdminPanelScreen(),
       },
     );
   }

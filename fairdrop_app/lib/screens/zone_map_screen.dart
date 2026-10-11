@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/core_api_service.dart';
+import '../services/exceptions.dart';
 
 class ZoneMapScreen extends StatefulWidget {
   const ZoneMapScreen({super.key});
@@ -46,7 +47,9 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
   Future<void> _loadZones() async {
     try {
       final response = await CoreApiService.getZoneMap();
-      final features = response['data']['features'] as List<dynamic>;
+      // BUG-6 fix: null-safe access to prevent crash on unexpected response shape
+      final data = response['data'] as Map<String, dynamic>?;
+      final features = data?['features'] as List<dynamic>? ?? [];
 
       setState(() {
         _zones = features.cast<Map<String, dynamic>>();

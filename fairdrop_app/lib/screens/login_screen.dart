@@ -7,7 +7,9 @@
 // On success, stores JWT token and navigates to the appropriate dashboard.
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/core_api_service.dart';
+import '../services/exceptions.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -72,21 +74,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Navigate based on user role
+      // BUG-9 fix: Route correctly by role
       final role = result['user']['role'] as String;
+      final isNewUser = !_isLogin; // registration = first time
+
       String route;
       switch (role) {
-        case 'customer':
-          route = '/orders';
         case 'rider':
-          route = '/rider-dashboard';
+          // Check if onboarding has been completed (FR-46)
+          if (isNewUser) {
+            route = '/onboarding';
+          } else {
+            final prefs = await SharedPreferences.getInstance();
+            final onboarded = prefs.getBool('onboarding_complete') ?? false;
+            route = onboarded ? '/rider-home' : '/onboarding';
+          }
         case 'admin':
-          route = '/';
+          route = '/admin-panel';
+        case 'customer':
         case 'restaurant':
-          route = '/';
+          route = '/unsupported-role';
         default:
-          route = '/';
+          route = '/unsupported-role';
       }
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, route);
 
       // Show success message
@@ -100,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on ApiException catch (e) {
       setState(() {
-        _errorMessage = e.body['message'] ?? 'Something went wrong';
+        _errorMessage = e.message;
       });
     } catch (e) {
       setState(() {
