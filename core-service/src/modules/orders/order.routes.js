@@ -14,6 +14,7 @@ const {
   updateStatus,
   getRiderActiveOrder,
   getOrderHistory,
+  getRestaurants,
 } = require('./order.controller');
 const verifyToken = require('../../middleware/verifyToken');
 const requireRole = require('../../middleware/requireRole');
@@ -22,6 +23,9 @@ const requireRole = require('../../middleware/requireRole');
 router.use(verifyToken);
 
 // ── Specific routes (must be defined BEFORE /:id to avoid conflicts) ───────
+
+// List all restaurants (any authenticated user — needed to place orders)
+router.get('/restaurants', requireRole('customer', 'rider', 'admin'), getRestaurants);
 
 // Rider's current active order
 router.get('/rider/active', requireRole('rider'), getRiderActiveOrder);

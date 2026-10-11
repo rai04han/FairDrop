@@ -240,12 +240,31 @@ async function getRiderActiveOrder(req, res) {
 }
 
 /**
- * GET /api/orders/history
- * Role: customer, rider
+ * GET /api/orders/restaurants
+ * Role: customer, rider, admin
  *
- * Returns past orders for the logged-in user.
- * Customers see orders they placed; riders see orders they delivered.
+ * Returns all restaurant users (id, name, email, address).
+ * Used by the Flutter app to select a restaurant when placing an order
+ * without needing to impersonate the restaurant account (BUG-2 fix).
  */
+async function getRestaurants(req, res) {
+  try {
+    const restaurants = await User.find({ role: 'restaurant' })
+      .select('_id name email address')
+      .sort({ name: 1 });
+
+    res.json({
+      success: true,
+      count: restaurants.length,
+      restaurants,
+    });
+  } catch (error) {
+    console.error('Get restaurants error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+}
+
+
 async function getOrderHistory(req, res) {
   try {
     const { role, id } = req.user;
@@ -281,4 +300,5 @@ module.exports = {
   updateStatus,
   getRiderActiveOrder,
   getOrderHistory,
+  getRestaurants,
 };
