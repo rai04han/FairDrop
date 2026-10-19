@@ -19,6 +19,7 @@ const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 const app = require('../src/app');
 const env = require('../src/config/env');
+const Zone = require('../src/modules/zones/Zone.model');
 
 // ── Test server setup ──────────────────────────────────────────────────────
 // We start a temporary HTTP server for tests so we can make real requests.
@@ -251,5 +252,72 @@ describe('Role-based access control (403 enforcement)', () => {
 
     assert.equal(customerMe.data.user.role, 'customer');
     assert.equal(adminMe.data.user.role, 'admin');
+  });
+});
+
+describe('Rider Signup & Zone Assignment (FR-51, FR-52, D1)', () => {
+  before(async () => {
+    // Create two test zones with distinct zone_id codes
+    await Zone.create({
+      name: 'Polayathode Test Zone',
+      zone_id: 'KLM-PLY',
+      boundary: {
+        type: 'Polygon',
+        coordinates: [[[76.60, 8.87], [76.62, 8.87], [76.62, 8.89], [76.60, 8.89], [76.60, 8.87]]],
+      },
+    });
+
+    await Zone.create({
+      name: 'Chinnakkada Test Zone',
+      zone_id: 'KLM-CHK',
+      boundary: {
+        type: 'Polygon',
+        coordinates: [[[76.58, 8.88], [76.60, 8.88], [76.60, 8.90], [76.58, 8.90], [76.58, 8.88]]],
+      },
+    });
+  });
+
+  test('assigns zone with lowest zone_id on tie (KLM-CHK < KLM-PLY) (D1)', async () => {
+    const { status, data } = await request('POST', '/api/auth/register', {
+      name: 'Zone Rider 1',
+      email: 'zonerider1@test.com',
+      password: 'password123',
+      role: 'rider',
+      vehicle_type: 'motorcycle',
+    });
+
+    assert.equal(status, 201);
+    assert.equal(data.user.assigned_zone, 'KLM-CHK');
+    assert.equal(data.user.rider_profile.assigned_zone_code, 'KLM-CHK');
+  });
+
+  test('assigns zone with fewest riders (KLM-PLY has 0, KLM-CHK has 1)', async () => {
+    const { status, data } = await request('POST', '/api/auth/register', {
+      name: 'Zone Rider 2',
+      email: 'zonerider2@test.com',
+      password: 'password123',
+      role: 'rider',
+      vehicle_type: 'scooter',
+    });
+
+    assert.equal(status, 201);
+    assert.equal(data.user.assigned_zone, 'KLM-PLY');
+  });
+
+  test('ignores client-sent zone and assigns least-rider zone (FR-51, FR-52)', async () => {
+    // Both zones now have 1 rider. Tie goes to lowest zone_id (KLM-CHK).
+    const { status, data } = await request('POST', '/api/auth/register', {
+      name: 'Zone Rider 3',
+      email: 'zonerider3@test.com',
+      password: 'password123',
+      role: 'rider',
+      vehicle_type: 'bicycle',
+      zone: 'MALICIOUS_ZONE',
+      zone_id: 'FAKE_ZONE_ID',
+    });
+
+    assert.equal(status, 201);
+    // Client sent MALICIOUS_ZONE, but backend assigned KLM-CHK
+    assert.equal(data.user.assigned_zone, 'KLM-CHK');
   });
 });

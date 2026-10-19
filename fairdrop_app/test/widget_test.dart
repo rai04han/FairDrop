@@ -1,20 +1,29 @@
 // ============================================================================
 // FairDrop — Widget Test
 // ============================================================================
-// This test verifies that the app starts without crashing.
-// Run with: flutter test
+// Verifies that the application boots and renders the splash screen (FR-1).
+// ============================================================================
 
 import 'package:flutter_test/flutter_test.dart';
-
-// Import our app (FairDropApp, not the old MyApp)
 import 'package:fairdrop_app/main.dart';
+import 'package:fairdrop_app/screens/splash_screen.dart';
+import 'package:fairdrop_app/config/theme.dart';
 
 void main() {
-  testWidgets('App starts and shows splash screen', (WidgetTester tester) async {
-    // Build the app and trigger a frame (renders the first screen)
+  testWidgets('App starts and renders splash screen with brand logo', (WidgetTester tester) async {
+    // Build the app and trigger a frame
     await tester.pumpWidget(const FairDropApp());
 
-    // Verify the splash screen title is visible (FR-1)
-    expect(find.text('FairDrop'), findsOneWidget);
+    // Allow animations to initiate
+    await tester.pump();
+
+    // Verify SplashScreen is rendered
+    expect(find.byType(SplashScreen), findsOneWidget);
+
+    // Verify FairDrop logo is displayed
+    expect(find.byType(FairDropLogo), findsOneWidget);
+
+    // Verify subtitle or brand message is displayed
+    expect(find.textContaining('Transparent Algorithmic Pay'), findsOneWidget);
   });
 }

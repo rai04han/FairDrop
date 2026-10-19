@@ -13,6 +13,14 @@ const SALT_ROUNDS = 10;
 
 // ── Rider-specific profile (only present when role = "rider") ──────────────
 
+const shiftSessionSchema = new mongoose.Schema(
+  {
+    started_at: { type: Date, required: true },
+    ended_at: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const riderProfileSchema = new mongoose.Schema(
   {
     vehicle_type: {
@@ -23,8 +31,18 @@ const riderProfileSchema = new mongoose.Schema(
     vehicle_number: { type: String, default: '' },
     zone_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Zone', default: null },
     current_zone_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Zone', default: null },
+    assigned_zone_code: { type: String, default: null },
+    current_zone_code: { type: String, default: null },
     is_available: { type: Boolean, default: true },
+    is_online: { type: Boolean, default: false },
     active_hours_today: { type: Number, default: 0 },
+    current_session_started_at: { type: Date, default: null },
+    shift_sessions: {
+      type: [shiftSessionSchema],
+      default: [],
+    },
+    safety_checklist_acknowledged: { type: Boolean, default: false },
+    last_assigned_at: { type: Date, default: null },
   },
   { _id: false }
 );
@@ -61,6 +79,11 @@ const userSchema = new mongoose.Schema(
     is_active: {
       type: Boolean,
       default: true,
+    },
+    address: {
+      label: { type: String, default: '' },
+      latitude: { type: Number, default: 0 },
+      longitude: { type: Number, default: 0 },
     },
     rider_profile: {
       type: riderProfileSchema,

@@ -19,7 +19,10 @@ Thumbs.db
 npm-debug.log*
 
 # Flutter
-flutter_app/.dart_tool/
-flutter_app/build/
-flutter_app/.flutter-plugins
-flutter_app/.flutter-plugins-dependencies
+fairdrop_app/.dart_tool/
+fairdrop_app/build/
+fairdrop_app/.flutter-plugins
+fairdrop_app/.flutter-plugins-dependencies
+
+# Repomix & bundle dumps
+repomix-output.xml

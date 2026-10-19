@@ -5,7 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test tests/"
+    "test": "node --test --test-concurrency=1 tests/auth.test.js tests/orders.test.js tests/zones.test.js tests/riders.test.js tests/restaurants.test.js",
+    "seed": "node ../scripts/seed.js"
   },
   "keywords": [],
   "author": "",

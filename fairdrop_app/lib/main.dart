@@ -19,12 +19,15 @@
 // Text, Button, Scaffold, AppBar, Colors, Icons, etc.
 // Almost every Dart file in a Flutter app imports this.
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 // Import screen files (each screen is a separate file).
 // These are placeholder screens for now — real implementations
 // will be built on separate branches (Week 9–12).
+import 'config/theme.dart';
 import 'screens/pay_breakdown_screen.dart';
 import 'screens/rider_dashboard_screen.dart';
+import 'screens/analytics_screen.dart';
 import 'screens/admin_panel_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/zone_map_screen.dart';
@@ -36,6 +39,18 @@ import 'screens/active_delivery_screen.dart';   // FR-17
 import 'screens/onboarding_screen.dart';        // FR-46
 import 'screens/profile_screen.dart';           // FR-47
 import 'screens/unsupported_role_screen.dart';  // FR-6
+import 'screens/customer_shell_screen.dart';     // FR-55
+import 'screens/restaurant_shell_screen.dart';   // FR-62
+import 'screens/rider_signup_screen.dart';       // FR-51
+import 'screens/customer/delivery_location_screen.dart'; // Screen 11 (FR-55)
+import 'screens/customer/restaurant_list_screen.dart';   // Screen 12 (FR-56)
+import 'screens/customer/restaurant_menu_screen.dart';   // Screen 13 (FR-57)
+import 'screens/customer/cart_screen.dart';              // Screen 14 (FR-58)
+import 'screens/customer/mock_payment_screen.dart';      // Screen 15 (FR-59)
+import 'screens/customer/order_confirmation_screen.dart';// Screen 16 (FR-60)
+import 'screens/restaurant/menu_management_screen.dart'; // Screen 17 (FR-62, FR-64)
+import 'screens/restaurant/add_edit_menu_item_screen.dart'; // Screen 18 (FR-63)
+import 'screens/restaurant/restaurant_orders_screen.dart'; // Screen 19 (FR-65, FR-66, FR-69)
 import 'services/core_api_service.dart';
 
 // ============================================================================
@@ -70,53 +85,8 @@ class FairDropApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
 
       // ── Theme ─────────────────────────────────────────────────────────
-      // This defines the visual style for the ENTIRE app.
-      // Every screen inherits these colors, fonts, and styles.
-      theme: ThemeData(
-        // colorSchemeSeed picks a base color and generates a harmonious
-        // palette (primary, secondary, surface, background, error, etc.)
-        colorSchemeSeed: const Color(0xFF00897B), // Teal 600 — worker equity theme
-        brightness: Brightness.light,
-
-        // useMaterial3 enables Material Design 3 (Google's latest design system)
-        // Gives you rounded corners, updated buttons, and modern elevation
-        useMaterial3: true,
-
-        // AppBar theme — the top bar on every screen
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
-        ),
-
-        // Card theme — for the info cards on dashboard and breakdown screens
-        cardTheme: CardThemeData(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-
-      // ── Dark theme ────────────────────────────────────────────────────
-      // Automatically used when the device is in dark mode.
-      darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF00897B),
-        brightness: Brightness.dark,
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
-        ),
-        cardTheme: CardThemeData(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-
-      // Use system setting (light/dark) — respects user's device preference
-      themeMode: ThemeMode.system,
+      // Tailored FairDrop design system from Stitch project #1184075210986276795
+      theme: FairDropTheme.lightTheme,
 
       // ── Routes ────────────────────────────────────────────────────────
       // Routes map URL-like paths to screen widgets.
@@ -137,8 +107,22 @@ class FairDropApp extends StatelessWidget {
         '/zone-map':         (context) => const ZoneMapScreen(),
         '/orders':           (context) => const OrderScreen(),
         '/pay-breakdown':    (context) => const PayBreakdownScreen(),
+        '/delivery-summary': (context) => const PayBreakdownScreen(),
         '/rider-dashboard':  (context) => const RiderDashboardScreen(),
-        '/admin-panel':      (context) => const AdminPanelScreen(),
+        '/analytics':        (context) => const AnalyticsScreen(),
+        '/admin-panel':                  (context) => const AdminPanelScreen(),
+        '/customer':                     (context) => const CustomerShellScreen(),
+        '/customer/location':            (context) => const DeliveryLocationScreen(),
+        '/customer/restaurants':         (context) => const RestaurantListScreen(),
+        '/customer/menu':                (context) => const RestaurantMenuScreen(),
+        '/customer/cart':                (context) => const CartScreen(),
+        '/customer/payment':             (context) => const MockPaymentScreen(),
+        '/customer/order-confirmation':  (context) => const OrderConfirmationScreen(),
+        '/restaurant':                   (context) => const RestaurantShellScreen(),
+        '/restaurant/menu':              (context) => const MenuManagementScreen(),
+        '/restaurant/menu/add':          (context) => const AddEditMenuItemScreen(),
+        '/restaurant/orders':            (context) => const RestaurantOrdersScreen(),
+        '/rider-signup':                 (context) => const RiderSignupScreen(),
       },
     );
   }
@@ -158,19 +142,18 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 'Theme.of(context)' reads the theme we defined in MaterialApp above.
-    // This way, if we change colors in the theme, all screens update automatically.
-    final theme = Theme.of(context);
-
     // Scaffold is the basic screen structure: AppBar (top) + Body (content).
     // Almost every screen in Flutter uses Scaffold.
     return Scaffold(
+      backgroundColor: FairDropColors.mintBg,
       // ── App Bar ─────────────────────────────────────────────────────
       appBar: AppBar(
-        title: const Text('FairDrop'),
+        backgroundColor: Colors.white,
+        title: const FairDropLogo(fontSize: 22),
+        centerTitle: false,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout_rounded),
             tooltip: 'Logout',
             onPressed: () async {
               await CoreApiService.logout();
@@ -183,95 +166,165 @@ class HomeScreen extends StatelessWidget {
       ),
 
       // ── Body ────────────────────────────────────────────────────────
-      // SafeArea prevents content from being hidden behind the status bar
-      // or phone notch.
       body: SafeArea(
-        child: Padding(
-          // EdgeInsets.all(16) adds 16 pixels of space on all four sides.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
-            // Column stacks children vertically (top to bottom).
-            // CrossAxisAlignment.stretch makes children fill the full width.
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // ── Header ──────────────────────────────────────────────
-              Text(
-                'Pay Transparency Engine',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: FairDropColors.cardShadow,
+                  border: Border.all(color: FairDropColors.mintBorder),
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Algorithmically fair pay for gig delivery workers',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                child: Column(
+                  children: [
+                    Text(
+                      'Pay Transparency & Equity Engine',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: FairDropColors.brandNavy,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Algorithmically fair pay for gig delivery workers in Kollam, Kerala',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: FairDropColors.slateMuted,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
-                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
 
               // ── Navigation Cards ────────────────────────────────────
-              // Each card navigates to a different screen when tapped.
+              _buildNavCard(
+                context: context,
+                icon: Icons.app_registration_rounded,
+                title: 'Rider Registration',
+                subtitle: 'New delivery worker signup with automatic zone assignment',
+                route: '/rider-signup',
+                color: FairDropColors.brandGreen,
+              ),
+              const SizedBox(height: 10),
 
               _buildNavCard(
                 context: context,
-                icon: Icons.receipt_long,
-                title: 'Pay Breakdown',
-                subtitle: 'Calculate and view delivery pay with line-by-line transparency',
+                icon: Icons.two_wheeler_rounded,
+                title: 'Rider Shift & Offers',
+                subtitle: 'Live shift pay, proportion stack & instant dispatch acceptance',
+                route: '/rider-home',
+                color: FairDropColors.brandGreen,
+              ),
+              const SizedBox(height: 10),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.receipt_long_rounded,
+                title: 'Pay Breakdown & Simulator',
+                subtitle: 'Line-by-line itemized transparency and formula calculation',
                 route: '/pay-breakdown',
-                color: theme.colorScheme.primary,
+                color: FairDropColors.brandOrange,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
               _buildNavCard(
                 context: context,
-                icon: Icons.bar_chart,
-                title: 'Rider Dashboard',
-                subtitle: 'Earnings history and FairDrop vs cliff-bonus comparison',
-                route: '/rider-dashboard',
-                color: theme.colorScheme.tertiary,
+                icon: Icons.person_rounded,
+                title: 'Rider Profile & Rate Cards',
+                subtitle: 'Worker details, active shift status & wage guarantees',
+                route: '/profile',
+                color: FairDropColors.payWait,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
               _buildNavCard(
                 context: context,
-                icon: Icons.admin_panel_settings,
-                title: 'Admin Panel',
-                subtitle: 'Configure pay constants with 7-day advance notice',
-                route: '/admin-panel',
-                color: theme.colorScheme.secondary,
-              ),
-              const SizedBox(height: 12),
-
-              _buildNavCard(
-                context: context,
-                icon: Icons.map,
+                icon: Icons.map_rounded,
                 title: 'Zone Map',
-                subtitle: 'View Kollam delivery zones on an interactive map',
+                subtitle: 'Interactive map of Kollam delivery zones & wage floors',
                 route: '/zone-map',
-                color: Colors.indigo,
+                color: FairDropColors.brandNavy,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
               _buildNavCard(
                 context: context,
-                icon: Icons.shopping_bag,
+                icon: Icons.shopping_bag_rounded,
                 title: 'Orders',
                 subtitle: 'Place an order and track delivery status',
                 route: '/orders',
-                color: Colors.deepOrange,
+                color: FairDropColors.warningAmber,
               ),
+              const SizedBox(height: 10),
 
-              // Spacer pushes the version text to the bottom of the screen.
-              const Spacer(),
+              _buildNavCard(
+                context: context,
+                icon: Icons.bar_chart_rounded,
+                title: 'Rider Dashboard',
+                subtitle: 'Earnings history, minimum wage status & delivery ledger',
+                route: '/rider-dashboard',
+                color: FairDropColors.brandGreen,
+              ),
+              const SizedBox(height: 10),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.analytics_rounded,
+                title: 'Pay Analytics (Screen 10)',
+                subtitle: 'FairDrop vs cliff-bonus comparison with cliff-wins scenario',
+                route: '/analytics',
+                color: FairDropColors.brandOrange,
+              ),
+              const SizedBox(height: 10),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.admin_panel_settings_rounded,
+                title: 'Admin Panel',
+                subtitle: 'Configure pay constants with 7-day advance notice',
+                route: '/admin-panel',
+                color: FairDropColors.slateMuted,
+              ),
+              const SizedBox(height: 10),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.person_pin_circle_rounded,
+                title: 'Customer Portal',
+                subtitle: 'Delivery location picker, restaurant menus & transparent cart',
+                route: '/customer',
+                color: FairDropColors.brandGreen,
+              ),
+              const SizedBox(height: 10),
+
+              _buildNavCard(
+                context: context,
+                icon: Icons.storefront_rounded,
+                title: 'Restaurant Portal',
+                subtitle: 'Partner kitchen, menu items, prep timers & live orders',
+                route: '/restaurant',
+                color: FairDropColors.brandOrange,
+              ),
+              const SizedBox(height: 24),
 
               // ── Footer ─────────────────────────────────────────────
               Text(
                 'FairDrop v1.0.0 — MCA Mini Project 23MCAM307',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: FairDropColors.slateMuted,
                 ),
                 textAlign: TextAlign.center,
               ),

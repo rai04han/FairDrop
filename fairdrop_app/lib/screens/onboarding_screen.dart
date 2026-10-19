@@ -1,18 +1,15 @@
 // ============================================================================
 // FairDrop — Onboarding Screen
+// Based on Stitch Design Project #1184075210986276795 (Page 1 of 4, etc.)
 // ============================================================================
-// Owner: Shared
-// PRD FR-46 (P1)
-//
-// FR-46: Shows pay policy, 7-day notice commitment, safety checklist.
-//        Rider must check all items before proceeding to rider home.
-//
-// Shown after first login for rider accounts. After completion, stores
-// a flag so it's not shown again.
+// FR-46: 4-slide onboarding explaining pay transparency, statutory floor,
+// 7-day notice commitment, and required safety/dignity checklist.
 // ============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/theme.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -25,14 +22,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pageController = PageController();
   int _currentPage = 0;
 
-  // Safety checklist items — all must be checked (FR-46)
   final Map<String, bool> _checklist = {
-    'I have read the FairDrop pay policy (base rate, distance pay, surge, floor)': false,
-    'I understand pay changes require 7 days advance notice': false,
-    'My vehicle is roadworthy and insured': false,
-    'I have a valid driving licence': false,
-    'I will follow traffic rules at all times': false,
-    'I understand I can decline any order without penalty': false,
+    'I have read the FairDrop upfront pay formula policy': false,
+    'I understand rate card changes require 7 days advance notice': false,
+    'My vehicle is roadworthy, insured, and has valid PUC': false,
+    'I hold a valid two-wheeler driving licence': false,
+    'I will wear my helmet and obey traffic rules at all times': false,
+    'I understand I can decline any order with zero penalty': false,
   };
 
   bool get _allChecked => _checklist.values.every((v) => v);
@@ -46,12 +42,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _nextPage() {
-    if (_currentPage < 2) {
+    if (_currentPage < 3) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 350),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     }
+  }
+
+  void _skipToFinal() {
+    _pageController.animateToPage(
+      3,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
@@ -62,84 +66,133 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
     return Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            // ── Page indicator ─────────────────────────────────────────
+            // ── Top Brand Header ─────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.only(top: 16, left: 24, right: 24),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('FairDrop Onboarding',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  Row(
-                    children: List.generate(3, (i) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: _currentPage == i ? 20 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: _currentPage == i ? cs.primary : cs.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
+                  const FairDropLogo(fontSize: 26),
+                  if (_currentPage < 3)
+                    TextButton(
+                      onPressed: _skipToFinal,
+                      child: Text(
+                        'Skip',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: FairDropColors.slateMuted,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
                         ),
                       ),
-                    )),
-                  ),
+                    ),
                 ],
               ),
             ),
 
-            // ── Page content ───────────────────────────────────────────
+            // ── Page View Body ───────────────────────────────────────────
             Expanded(
               child: PageView(
                 controller: _pageController,
                 onPageChanged: (p) => setState(() => _currentPage = p),
-                physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  _buildPayPolicyPage(theme, cs),
-                  _buildNoticeCommitmentPage(theme, cs),
-                  _buildSafetyChecklistPage(theme, cs),
+                  _buildSlide(
+                    icon: Icons.payments_rounded,
+                    iconColor: FairDropColors.brandGreen,
+                    title: 'Transparent\nEarnings',
+                    subtitle:
+                        'See your exact pay before you accept. No surprises, no hidden deductions, and no cliff bonuses.',
+                    badge: '100% Upfront Breakdown',
+                  ),
+                  _buildSlide(
+                    icon: Icons.shield_rounded,
+                    iconColor: FairDropColors.brandOrange,
+                    title: 'Kerala Minimum\nWage Guarantee',
+                    subtitle:
+                        'Automatic wage top-ups ensure your hourly compensation never drops below the Kerala statutory floor.',
+                    badge: 'Guaranteed Safety Net',
+                  ),
+                  _buildSlide(
+                    icon: Icons.notifications_active_rounded,
+                    iconColor: FairDropColors.payWait,
+                    title: '7-Day Notice\nCommitment',
+                    subtitle:
+                        'Any revision to base rates, km rates, or incentives is locked with a mandatory 7-day advance notice.',
+                    badge: 'No Secret Algorithm Changes',
+                  ),
+                  _buildChecklistSlide(),
                 ],
               ),
             ),
 
-            // ── Navigation buttons ─────────────────────────────────────
+            // ── Bottom Section with Dots & Action Buttons ───────────────
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_currentPage > 0)
-                    TextButton.icon(
-                      onPressed: () => _pageController.previousPage(
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeInOut),
-                      icon: const Icon(Icons.arrow_back, size: 16),
-                      label: const Text('Back'),
-                    ),
-                  const Spacer(),
-                  if (_currentPage < 2)
-                    FilledButton.icon(
+                  // 4 Dots
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(4, (i) {
+                      final isActive = _currentPage == i;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: isActive ? 24 : 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: isActive ? FairDropColors.brandGreen : const Color(0xFFDCE4EC),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 24),
+
+                  if (_currentPage < 3) ...[
+                    FilledButton(
                       onPressed: _nextPage,
-                      icon: const Icon(Icons.arrow_forward, size: 16),
-                      label: const Text('Next'),
-                    )
-                  else
-                    FilledButton.icon(
-                      onPressed: _allChecked ? _completeOnboarding : null,
-                      icon: const Icon(Icons.check_circle),
-                      label: const Text('Get Started'),
                       style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 14),
+                        backgroundColor: FairDropColors.brandGreen,
+                        minimumSize: const Size.fromHeight(54),
+                        shape: const StadiumBorder(),
+                        elevation: 3,
+                        shadowColor: FairDropColors.brandGreen.withValues(alpha: 0.3),
+                      ),
+                      child: Text(
+                        'Next',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
+                  ] else ...[
+                    FilledButton(
+                      onPressed: _allChecked ? _completeOnboarding : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: FairDropColors.brandGreen,
+                        disabledBackgroundColor: const Color(0xFFE2E8F0),
+                        minimumSize: const Size.fromHeight(54),
+                        shape: const StadiumBorder(),
+                        elevation: _allChecked ? 3 : 0,
+                      ),
+                      child: Text(
+                        'Start Riding With Dignity',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: _allChecked ? Colors.white : const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -149,62 +202,65 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ── Page 1: Pay Policy ─────────────────────────────────────────────────────
-  Widget _buildPayPolicyPage(ThemeData theme, ColorScheme cs) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+  Widget _buildSlide({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required String badge,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Icon(Icons.receipt_long, size: 40, color: cs.primary),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('Pay Policy', style: theme.textTheme.headlineSmall
-              ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(
-            'FairDrop pays you transparently for every delivery. '
-            'Here\'s exactly how your earnings are calculated:',
-            style: theme.textTheme.bodyMedium?.copyWith(
-                color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-          ...[
-            ('Base Rate', '₹15 per delivery — guaranteed for every completed delivery.', Icons.attach_money),
-            ('Distance Pay', '₹6 per km — distance measured from restaurant to drop-off.', Icons.route),
-            ('Surge Bonus', '₹20 flat during lunch (12–2pm) and dinner (7–9pm) peak hours.', Icons.flash_on),
-            ('Wait Compensation', '₹10 flat if you wait > 10 minutes at the restaurant.', Icons.timer),
-            ('Earnings Floor', '₹70/hr minimum wage protection — any shortfall is topped up automatically.', Icons.shield),
-          ].map((item) => _policyItem(theme, cs, item.$1, item.$2, item.$3)),
-          const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.all(12),
+            width: 140,
+            height: 140,
             decoration: BoxDecoration(
-              color: cs.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
+              color: iconColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
             ),
-            child: Row(
-              children: [
-                Icon(Icons.lightbulb, color: cs.onPrimaryContainer, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'All pay constants are admin-configurable. You\'ll be notified '
-                    '7 days before any changes take effect.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onPrimaryContainer),
-                  ),
-                ),
-              ],
+            child: Icon(icon, size: 72, color: iconColor),
+          ),
+          const SizedBox(height: 32),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: FairDropColors.mintBg,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: FairDropColors.mintBorder),
+            ),
+            child: Text(
+              badge,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: FairDropColors.brandGreen,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: FairDropColors.brandNavy,
+              height: 1.2,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: FairDropColors.slateMuted,
+              height: 1.45,
             ),
           ),
         ],
@@ -212,175 +268,79 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  Widget _policyItem(ThemeData t, ColorScheme cs, String title, String desc,
-      IconData icon) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 18, color: cs.primary),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style:
-                          t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  Text(desc,
-                      style: t.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-
-  // ── Page 2: 7-day Notice Commitment ───────────────────────────────────────
-  Widget _buildNoticeCommitmentPage(ThemeData theme, ColorScheme cs) {
+  Widget _buildChecklistSlide() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: cs.secondaryContainer,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child:
-                  Icon(Icons.calendar_today, size: 40, color: cs.secondary),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('7-Day Advance Notice',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(
-            'FairDrop follows the Fairwork Fair Contracts principle '
-            '(Principle 6). This means:',
-            style:
-                theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-          ...[
-            'Any change to pay rates, bonus structures, or working conditions will be communicated to you at least 7 days before taking effect.',
-            'The reason for every pay change is documented and visible to you.',
-            'You will see an "Upcoming Pay Change" notice on your home screen when a change is scheduled.',
-            'You can view the history of all past pay configurations in the app.',
-          ].map((text) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                        child: Text(text, style: theme.textTheme.bodyMedium)),
-                  ],
-                ),
-              )),
-          const SizedBox(height: 20),
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              border: Border.all(color: cs.primary.withValues(alpha: 0.5)),
+              color: FairDropColors.brandOrange.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Your Commitment',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
-                Text(
-                  'By continuing, you acknowledge that you have been informed '
-                  'of FairDrop\'s pay transparency and 7-day notice policy.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Page 3: Safety Checklist ───────────────────────────────────────────────
-  Widget _buildSafetyChecklistPage(ThemeData theme, ColorScheme cs) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(18),
+            child: Text(
+              'MANDATORY STEP (FR-46)',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: FairDropColors.brandOrange,
+                letterSpacing: 0.5,
               ),
-              child: const Icon(Icons.verified_user, size: 40,
-                  color: Colors.green),
             ),
           ),
-          const SizedBox(height: 20),
-          Text('Safety Checklist',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(
-            'Please confirm all of the following before you start accepting orders. '
-            'All items must be checked.',
-            style:
-                theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+            'Safety & Fairwork Checklist',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: FairDropColors.brandNavy,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Please verify all 6 requirements before accepting your first delivery.',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: FairDropColors.slateMuted,
+            ),
           ),
           const SizedBox(height: 16),
-          ..._checklist.keys.map((item) => CheckboxListTile(
-                value: _checklist[item],
-                onChanged: (v) =>
-                    setState(() => _checklist[item] = v ?? false),
-                title: Text(item, style: theme.textTheme.bodyMedium),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-              )),
-          const SizedBox(height: 12),
-          if (!_allChecked)
-            Container(
-              padding: const EdgeInsets.all(10),
+          ..._checklist.keys.map((item) {
+            final isChecked = _checklist[item] ?? false;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                color: cs.errorContainer,
-                borderRadius: BorderRadius.circular(8),
+                color: isChecked ? FairDropColors.mintBg : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isChecked ? FairDropColors.brandGreen : const Color(0xFFE2E8F0),
+                  width: 1.5,
+                ),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, color: cs.error, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Please check all items to proceed.',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onErrorContainer),
-                    ),
+              child: CheckboxListTile(
+                value: isChecked,
+                activeColor: FairDropColors.brandGreen,
+                checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                title: Text(
+                  item,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: FairDropColors.brandNavy,
                   ),
-                ],
+                ),
+                onChanged: (val) {
+                  setState(() => _checklist[item] = val ?? false);
+                },
               ),
-            ),
+            );
+          }),
         ],
       ),
     );

@@ -90,20 +90,22 @@ app.use((err, req, res, next) => {
 });
 
 // ── Start server ───────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
-  console.log(`\n  FairDrop Pay Service`);
-  console.log(`  ─────────────────────────────`);
-  console.log(`  Port:     ${PORT}`);
-  console.log(`  Database: ${process.env.DB_NAME || 'fairdrop_pay'}`);
-  console.log(`  ─────────────────────────────\n`);
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    console.log(`\n  FairDrop Pay Service`);
+    console.log(`  ─────────────────────────────`);
+    console.log(`  Port:     ${PORT}`);
+    console.log(`  Database: ${process.env.DB_NAME || 'fairdrop_pay'}`);
+    console.log(`  ─────────────────────────────\n`);
 
-  try {
-    await testConnection();
-  } catch (error) {
-    console.error('✗ Failed to connect to MySQL:', error.message);
-    console.error('  Make sure MySQL is running and .env is configured correctly.');
-    process.exit(1);
-  }
-});
+    try {
+      await testConnection();
+    } catch (error) {
+      console.error('✗ Failed to connect to MySQL:', error.message);
+      console.error('  Make sure MySQL is running and .env is configured correctly.');
+      process.exit(1);
+    }
+  });
+}
 
 module.exports = app;

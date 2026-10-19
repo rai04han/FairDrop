@@ -2,22 +2,31 @@
 // Owner: Hari (25MCA025)
 // Module: Orders (Module 2)
 //
-// Handles the full order lifecycle:
-//   1. Customer places order → status: "placed"
-//   2. System assigns rider → status: "assigned"
-//   3. Rider picks up food → status: "picked_up"
-//   4. Rider delivers food → status: "delivered" → triggers pay calculation
-//
-// Every status change is logged in status_history[] for transparency.
+// Handles the full order lifecycle per PRD v2.1 (FR-58, FR-60, FR-67, FR-68, FR-70, FR-72, FR-73):
+//   1. Customer places order → DB item pricing enforced, unavailable rejected, haversine distance computed,
+//      auto-accepted (status: "accepted"), allocation runs (FR-68).
+//   2. If rider available → order.rider_id set, rider_ack: "pending", allocation: "allocated".
+//      If none available → allocation: "no_rider_available", allocated when rider goes online (FR-72).
+//   3. Rider accepts → status: "assigned", rider_ack: "accepted".
+//      Rider declines → re-allocated excluding decliner (FR-15, D7).
+//   4. Rider arrives → status: "arrived", arrived_at recorded.
+//   5. Rider picks up → status: "picked_up", picked_up_at recorded.
+//   6. Rider delivers → status: "delivered", delivered_at recorded → triggers pay calculation.
 
 const Order = require('./Order.model');
 const Counter = require('./Counter.model');
+const MenuItem = require('./MenuItem.model');
 const User = require('../auth/User.model');
+const Zone = require('../zones/Zone.model');
 const { calculatePay } = require('./payClient');
+const {
+  calculateHaversine,
+  findZoneForLocation,
+  runAllocation,
+} = require('./allocation.service');
 
 // ── Surge hours (from PRD) ─────────────────────────────────────────────────
 // Lunch: 12:00–14:00, Dinner: 19:00–21:00
-
 function isSurgeHour() {
   const hour = new Date().getHours();
   return (hour >= 12 && hour < 14) || (hour >= 19 && hour < 21);
@@ -27,7 +36,14 @@ function isSurgeHour() {
  * POST /api/orders
  * Role: customer
  *
- * Places a new order. Auto-detects surge pricing based on time of day.
+ * Places a new order:
+ *   - Verifies restaurant exists
+ *   - Fetches item prices from DB (never trusts client prices, FR-240)
+ *   - Rejects unavailable items with 400 (FR-57, FR-240)
+ *   - Computes straight-line haversine distance in km, 2 decimals (FR-70, D9)
+ *   - Auto-accepts order with status = "accepted" (FR-66, FR-67)
+ *   - Runs zone-based allocation algorithm (FR-68) with out-of-zone cap check (FR-73)
+ *   - If no rider available, sets allocation: "no_rider_available" (FR-60, D6)
  */
 async function createOrder(req, res) {
   try {
@@ -36,16 +52,16 @@ async function createOrder(req, res) {
       items,
       delivery_address,
       restaurant_address,
-      distance_km,
+      distance_km: clientDistanceKm,
       restaurant_wait_mins,
       delay_context,
     } = req.body;
 
-    // ── Validate required fields ─────────────────────────────────────
-    if (!restaurant_id || !items || !delivery_address || !restaurant_address || !distance_km) {
+    // ── 1. Validate required fields ───────────────────────────────────
+    if (!restaurant_id || !items || !delivery_address) {
       return res.status(400).json({
         success: false,
-        message: 'restaurant_id, items, delivery_address, restaurant_address, and distance_km are required.',
+        message: 'restaurant_id, items, and delivery_address are required.',
       });
     }
 
@@ -56,7 +72,22 @@ async function createOrder(req, res) {
       });
     }
 
-    // ── Verify restaurant exists ─────────────────────────────────────
+    if (delivery_address.coordinates && Array.isArray(delivery_address.coordinates) && delivery_address.coordinates.length >= 2) {
+      if (delivery_address.longitude === undefined) delivery_address.longitude = Number(delivery_address.coordinates[0]);
+      if (delivery_address.latitude === undefined) delivery_address.latitude = Number(delivery_address.coordinates[1]);
+    }
+
+    if (
+      delivery_address.latitude === undefined ||
+      delivery_address.longitude === undefined
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'delivery_address must include latitude and longitude.',
+      });
+    }
+
+    // ── 2. Verify restaurant exists ───────────────────────────────────
     const restaurant = await User.findById(restaurant_id);
     if (!restaurant || restaurant.role !== 'restaurant') {
       return res.status(404).json({
@@ -65,30 +96,136 @@ async function createOrder(req, res) {
       });
     }
 
-    // ── Generate sequential order ID ─────────────────────────────────
+    // Resolve restaurant address & coordinates
+    const effectiveRestAddress = {
+      label: restaurant_address?.label || restaurant.address?.label || restaurant.name,
+      latitude: Number(restaurant_address?.latitude ?? restaurant.address?.latitude ?? 0),
+      longitude: Number(restaurant_address?.longitude ?? restaurant.address?.longitude ?? 0),
+    };
+
+    // ── 3. Resolve items from DB & enforce availability (FR-57, FR-240) ─
+    const resolvedItems = [];
+    for (const item of items) {
+      const quantity = Number(item.quantity);
+      if (!quantity || quantity < 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Item quantity must be a positive number.',
+        });
+      }
+
+      let menuItem = null;
+      const itemId = item.item_id || item._id || item.id;
+      if (itemId) {
+        menuItem = await MenuItem.findById(itemId);
+      }
+      if (!menuItem && item.name) {
+        menuItem = await MenuItem.findOne({
+          restaurant_id,
+          name: item.name,
+        });
+      }
+
+      if (!menuItem) {
+        return res.status(400).json({
+          success: false,
+          message: `Item "${item.name || itemId}" not found in restaurant menu.`,
+        });
+      }
+
+      if (menuItem.restaurant_id.toString() !== restaurant_id.toString()) {
+        return res.status(400).json({
+          success: false,
+          message: `Item "${menuItem.name}" does not belong to the selected restaurant.`,
+        });
+      }
+
+      if (menuItem.is_available === false) {
+        return res.status(400).json({
+          success: false,
+          message: `Item "${menuItem.name}" is currently unavailable.`,
+        });
+      }
+
+      // Enforce DB price and prep time
+      resolvedItems.push({
+        item_id: menuItem._id,
+        name: menuItem.name,
+        quantity,
+        price: Number(menuItem.price), // Always DB price!
+        prep_time_seconds: Number(menuItem.prep_time_seconds || 0),
+      });
+    }
+
+    // ── 4. Compute haversine straight-line distance (FR-70, D9) ───────
+    let computedDistanceKm = calculateHaversine(
+      effectiveRestAddress.latitude,
+      effectiveRestAddress.longitude,
+      Number(delivery_address.latitude),
+      Number(delivery_address.longitude)
+    );
+
+    if (computedDistanceKm === 0 && clientDistanceKm) {
+      computedDistanceKm = Number(clientDistanceKm);
+    }
+    const distance_km = Math.round(computedDistanceKm * 100) / 100;
+
+    // ── 5. Generate sequential order ID ───────────────────────────────
     const order_id = await Counter.getNextOrderId();
 
-    // ── Create the order ─────────────────────────────────────────────
-    const order = await Order.create({
+    // ── 6. Find restaurant zone ───────────────────────────────────────
+    const restaurantZone = await findZoneForLocation(
+      effectiveRestAddress.latitude,
+      effectiveRestAddress.longitude,
+      restaurant.assigned_zone_code || restaurant.rider_profile?.assigned_zone_code
+    );
+
+    const now = new Date();
+
+    // ── 7. Auto-accept order on placement (FR-66, FR-67) ───────────────
+    const order = new Order({
       order_id,
       customer_id: req.user.id,
       restaurant_id,
-      items,
-      delivery_address,
-      restaurant_address,
+      items: resolvedItems,
+      delivery_address: {
+        label: delivery_address.label || '',
+        latitude: Number(delivery_address.latitude),
+        longitude: Number(delivery_address.longitude),
+      },
+      restaurant_address: effectiveRestAddress,
       distance_km,
+      zone_id: restaurantZone?._id || null,
       is_surge_active: isSurgeHour(),
       restaurant_wait_mins: restaurant_wait_mins || 0,
       delay_context: delay_context || { type: 'none', verified: false, source: 'none' },
-      status: 'placed',
+      status: 'accepted',
+      accepted_at: now,
+      rider_ack: 'pending',
       status_history: [
-        { status: 'placed', changed_by: req.user.id },
+        { status: 'placed', changed_at: now, changed_by: req.user.id },
+        { status: 'accepted', changed_at: now, changed_by: req.user.id },
       ],
     });
+
+    // ── 8. Run Allocation algorithm (FR-68, FR-73) ───────────────────
+    const alloc = await runAllocation(order, restaurantZone);
+    if (alloc.allocated) {
+      order.rider_id = alloc.rider._id;
+      order.allocation = 'allocated';
+      order.is_out_of_zone = alloc.is_out_of_zone;
+      order.out_of_zone_distance_km = alloc.out_of_zone_distance_km;
+    } else {
+      order.rider_id = null;
+      order.allocation = 'no_rider_available';
+    }
+
+    await order.save();
 
     res.status(201).json({
       success: true,
       message: `Order ${order_id} placed successfully.`,
+      allocation: order.allocation,
       order,
     });
   } catch (error) {
@@ -125,11 +262,125 @@ async function getOrder(req, res) {
 }
 
 /**
+ * PATCH /api/orders/:id/accept
+ * Role: rider
+ *
+ * Rider accepts the allocated order (FR-15, FR-67).
+ * Sets rider_ack = "accepted" and status = "assigned".
+ */
+async function acceptOrder(req, res) {
+  try {
+    const order = await Order.findOne({ order_id: req.params.id });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    if (!order.rider_id || order.rider_id.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not the allocated rider for this order.',
+      });
+    }
+
+    if (order.status !== 'accepted' && order.status !== 'assigned') {
+      return res.status(400).json({
+        success: false,
+        message: `Order cannot be accepted in status "${order.status}".`,
+      });
+    }
+
+    order.rider_ack = 'accepted';
+    order.status = 'assigned';
+    order.status_history.push({
+      status: 'assigned',
+      changed_at: new Date(),
+      changed_by: req.user.id,
+    });
+
+    await order.save();
+
+    res.json({
+      success: true,
+      message: `Order ${order.order_id} accepted.`,
+      order,
+    });
+  } catch (error) {
+    console.error('Accept order error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+}
+
+/**
+ * PATCH /api/orders/:id/decline
+ * Role: rider
+ *
+ * Rider declines the order without penalty (FR-15, D7).
+ * Order is released and reallocated to another online idle rider excluding the decliner.
+ */
+async function declineOrder(req, res) {
+  try {
+    const order = await Order.findOne({ order_id: req.params.id });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    if (!order.rider_id || order.rider_id.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not the allocated rider for this order.',
+      });
+    }
+
+    if (!order.declined_by) order.declined_by = [];
+    order.declined_by.push(req.user.id);
+    order.rider_id = null;
+    order.rider_ack = 'pending';
+
+    // Re-run allocation excluding decliners (FR-15, FR-68, D7)
+    const restZone = order.zone_id
+      ? await Zone.findById(order.zone_id)
+      : await findZoneForLocation(
+          order.restaurant_address.latitude,
+          order.restaurant_address.longitude
+        );
+
+    const alloc = await runAllocation(order, restZone);
+    if (alloc.allocated) {
+      order.rider_id = alloc.rider._id;
+      order.allocation = 'allocated';
+      order.is_out_of_zone = alloc.is_out_of_zone;
+      order.out_of_zone_distance_km = alloc.out_of_zone_distance_km;
+    } else {
+      order.rider_id = null;
+      order.allocation = 'no_rider_available';
+    }
+
+    await order.save();
+
+    res.json({
+      success: true,
+      message: 'Order declined without penalty and reallocated.',
+      allocation: order.allocation,
+      order,
+    });
+  } catch (error) {
+    console.error('Decline order error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+}
+
+/**
  * PATCH /api/orders/:id/status
  * Role: rider, restaurant
  *
  * Updates order status. Enforces valid transitions:
- *   placed → assigned → picked_up → delivered
+ *   placed → accepted / assigned
+ *   accepted → assigned
+ *   assigned → arrived / picked_up
+ *   arrived → picked_up
+ *   picked_up → delivered
  *
  * On "delivered": calls Raihan's Pay Engine and stores the pay result.
  */
@@ -162,43 +413,84 @@ async function updateStatus(req, res) {
       });
     }
 
+    const now = new Date();
+
     // ── Update order fields ──────────────────────────────────────────
     order.status = new_status;
     order.status_history.push({
       status: new_status,
+      changed_at: now,
       changed_by: req.user.id,
     });
 
-    // Assign rider when status changes to "assigned"
-    if (new_status === 'assigned' && !order.rider_id) {
-      order.rider_id = req.user.id;
+    if (new_status === 'assigned') {
+      if (!order.rider_id) {
+        order.rider_id = req.user.id;
+      }
+      order.rider_ack = 'accepted';
+    } else if (new_status === 'arrived') {
+      order.arrived_at = now;
+    } else if (new_status === 'picked_up') {
+      order.picked_up_at = now;
+      // Server-computed restaurant wait time rounded up to whole minutes (FR-18, D10)
+      if (order.arrived_at) {
+        const elapsedMs = order.picked_up_at.getTime() - new Date(order.arrived_at).getTime();
+        const computedMins = Math.ceil(Math.max(0, elapsedMs) / 60000);
+        order.restaurant_wait_mins = restaurant_wait_mins !== undefined
+          ? Math.max(computedMins, restaurant_wait_mins)
+          : computedMins;
+      } else if (restaurant_wait_mins !== undefined) {
+        order.restaurant_wait_mins = restaurant_wait_mins;
+      }
+    } else if (new_status === 'delivered') {
+      order.delivered_at = now;
     }
 
-    // Update wait time and delay context if provided (typically at pickup/delivery)
-    if (restaurant_wait_mins !== undefined) {
+    if (restaurant_wait_mins !== undefined && new_status !== 'picked_up') {
       order.restaurant_wait_mins = restaurant_wait_mins;
     }
     if (delay_context) {
       order.delay_context = delay_context;
     }
 
-    // ── On delivery: call Pay Engine ─────────────────────────────────
+    // ── On delivery: call Pay Engine & update zone if out-of-zone (FR-73, D3) ──
     if (new_status === 'delivered') {
+      const callerToken = req.headers.authorization;
       try {
-        // Get rider's active hours today
         const rider = await User.findById(order.rider_id);
-        const activeHours = rider?.rider_profile?.active_hours_today || 1;
+        const activeHours = rider?.rider_profile?.active_hours_today
+          ? Math.max(rider.rider_profile.active_hours_today, 0.0001)
+          : 1;
 
-        const payResult = await calculatePay(order, activeHours);
+        const payResult = await calculatePay(order, activeHours, callerToken);
         order.pay_calculation_result = payResult;
+        order.pay_status = 'calculated';
       } catch (payError) {
-        // Pay calculation failed — store the error but don't block delivery
         console.error('Pay calculation failed:', payError.message);
         order.pay_calculation_result = {
           error: true,
           message: payError.message,
           note: 'Pay calculation failed. Needs manual review.',
         };
+        order.pay_status = 'pending';
+      }
+
+      // Update rider's current_zone_id if out-of-zone delivery (FR-73, D3)
+      try {
+        const rider = await User.findById(order.rider_id);
+        if (rider && rider.rider_profile) {
+          const dropZone = await findZoneForLocation(
+            order.delivery_address.latitude,
+            order.delivery_address.longitude
+          );
+          if (dropZone) {
+            rider.rider_profile.current_zone_id = dropZone._id;
+            rider.rider_profile.current_zone_code = dropZone.zone_id || dropZone.name;
+            await rider.save();
+          }
+        }
+      } catch (zoneErr) {
+        console.error('Failed to update rider zone after delivery:', zoneErr.message);
       }
     }
 
@@ -216,16 +508,78 @@ async function updateStatus(req, res) {
 }
 
 /**
+ * POST /api/orders/:id/retry-pay
+ * Role: rider, admin
+ *
+ * Retries pay calculation for a delivered order whose pay_status is pending or errored (FR-24).
+ */
+async function retryPay(req, res) {
+  try {
+    const order = await Order.findOne({ order_id: req.params.id });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    if (order.status !== 'delivered') {
+      return res.status(400).json({
+        success: false,
+        message: 'Order must be delivered before pay calculation can be retried.',
+      });
+    }
+
+    if (req.user.role === 'rider' && order.rider_id?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only retry pay for your own deliveries.',
+      });
+    }
+
+    const rider = await User.findById(order.rider_id);
+    const activeHours = rider?.rider_profile?.active_hours_today
+      ? Math.max(rider.rider_profile.active_hours_today, 0.0001)
+      : 1;
+
+    const callerToken = req.headers.authorization;
+    const payResult = await calculatePay(order, activeHours, callerToken);
+
+    order.pay_calculation_result = payResult;
+    order.pay_status = 'calculated';
+    await order.save();
+
+    res.json({
+      success: true,
+      message: 'Pay calculation retried successfully.',
+      pay_status: 'calculated',
+      order,
+    });
+  } catch (error) {
+    console.error('Retry pay error:', error.message);
+    res.status(502).json({
+      success: false,
+      message: `Pay calculation retry failed: ${error.message}`,
+      pay_status: 'pending',
+    });
+  }
+}
+
+/**
  * GET /api/orders/rider/active
  * Role: rider
  *
- * Returns the rider's currently active order (assigned or picked_up).
+ * Returns the rider's currently active order (FR-67):
+ * Matches an order where rider_id = this rider and:
+ *   - status == "accepted" with rider_ack == "pending"
+ *   - status in ["assigned", "arrived", "picked_up"]
  */
 async function getRiderActiveOrder(req, res) {
   try {
     const order = await Order.findOne({
       rider_id: req.user.id,
-      status: { $in: ['assigned', 'picked_up'] },
+      $or: [
+        { status: 'accepted', rider_ack: 'pending' },
+        { status: { $in: ['assigned', 'arrived', 'picked_up'] } },
+      ],
     });
 
     res.json({
@@ -244,8 +598,6 @@ async function getRiderActiveOrder(req, res) {
  * Role: customer, rider, admin
  *
  * Returns all restaurant users (id, name, email, address).
- * Used by the Flutter app to select a restaurant when placing an order
- * without needing to impersonate the restaurant account (BUG-2 fix).
  */
 async function getRestaurants(req, res) {
   try {
@@ -264,7 +616,10 @@ async function getRestaurants(req, res) {
   }
 }
 
-
+/**
+ * GET /api/orders/history
+ * Role: customer, rider, restaurant, admin
+ */
 async function getOrderHistory(req, res) {
   try {
     const { role, id } = req.user;
@@ -275,7 +630,6 @@ async function getOrderHistory(req, res) {
     } else if (role === 'rider') {
       filter = { rider_id: id };
     } else {
-      // Admin or restaurant — show all (admin) or restaurant's orders
       filter = role === 'admin' ? {} : { restaurant_id: id };
     }
 
@@ -298,6 +652,9 @@ module.exports = {
   createOrder,
   getOrder,
   updateStatus,
+  acceptOrder,
+  declineOrder,
+  retryPay,
   getRiderActiveOrder,
   getOrderHistory,
   getRestaurants,

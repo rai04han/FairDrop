@@ -62,8 +62,8 @@ class UnsupportedRoleScreen extends StatelessWidget {
 
                 // ── Explanation ───────────────────────────────────────────
                 Text(
-                  'The FairDrop mobile app is designed for delivery riders and administrators only.\n\n'
-                  'Customer and restaurant accounts can interact with FairDrop via the web dashboard or Postman API.',
+                  'This account role is not supported in the FairDrop mobile app.\n\n'
+                  'FairDrop supports rider, customer, restaurant, and admin roles.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

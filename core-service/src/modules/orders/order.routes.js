@@ -12,6 +12,9 @@ const {
   createOrder,
   getOrder,
   updateStatus,
+  acceptOrder,
+  declineOrder,
+  retryPay,
   getRiderActiveOrder,
   getOrderHistory,
   getRestaurants,
@@ -32,6 +35,17 @@ router.get('/rider/active', requireRole('rider'), getRiderActiveOrder);
 
 // Order history (customers see their orders, riders see their deliveries)
 router.get('/history', requireRole('customer', 'rider', 'admin'), getOrderHistory);
+
+// ── Order actions ──────────────────────────────────────────────────────────
+
+// Rider accepts allocated order (FR-15, FR-67)
+router.patch('/:id/accept', requireRole('rider'), acceptOrder);
+
+// Rider declines allocated order without penalty (FR-15, D7)
+router.patch('/:id/decline', requireRole('rider'), declineOrder);
+
+// Retry pay calculation for delivered order with pending pay (FR-24)
+router.post('/:id/retry-pay', requireRole('rider', 'admin'), retryPay);
 
 // ── CRUD routes ────────────────────────────────────────────────────────────
 

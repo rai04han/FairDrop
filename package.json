@@ -1,0 +1,21 @@
+{
+  "name": "fairdrop",
+  "version": "2.1.0",
+  "description": "FairDrop — Algorithmic Fairness in Last-Mile Food Delivery",
+  "private": true,
+  "scripts": {
+    "seed": "node scripts/seed.js",
+    "smoke": "node scripts/e2e-smoke.js",
+    "test:core": "npm test --prefix core-service",
+    "test:pay": "npm test --prefix pay-service",
+    "test:flutter": "cd fairdrop_app && flutter test",
+    "test:backend": "npm run test:core && npm run test:pay",
+    "test:all": "npm run test:backend && npm run test:flutter && npm run smoke"
+  },
+  "devDependencies": {},
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "mysql2": "^3.12.0",
+    "mongoose": "^8.9.5"
+  }
+}

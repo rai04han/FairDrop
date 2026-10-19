@@ -20,6 +20,12 @@ const zoneSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    zone_id: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
 
     // ── GeoJSON Polygon boundary ────────────────────────────────────────
     // Format: { type: "Polygon", coordinates: [[[lng, lat], [lng, lat], ...]] }

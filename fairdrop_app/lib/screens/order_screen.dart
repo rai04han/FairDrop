@@ -8,6 +8,8 @@
 //   2. My Orders  — shows order history with status tracking
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../config/theme.dart';
 import '../services/core_api_service.dart';
 import '../services/exceptions.dart';
 
@@ -37,13 +39,21 @@ class _OrderScreenState extends State<OrderScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: FairDropColors.mintBg,
       appBar: AppBar(
-        title: const Text('Orders'),
+        backgroundColor: Colors.white,
+        title: const FairDropLogo(fontSize: 22),
         bottom: TabBar(
           controller: _tabController,
+          indicatorColor: FairDropColors.brandGreen,
+          indicatorWeight: 3,
+          labelColor: FairDropColors.brandGreen,
+          unselectedLabelColor: FairDropColors.slateMuted,
+          labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800, fontSize: 13),
+          unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, fontSize: 13),
           tabs: const [
-            Tab(icon: Icon(Icons.add_shopping_cart), text: 'Place Order'),
-            Tab(icon: Icon(Icons.history), text: 'My Orders'),
+            Tab(icon: Icon(Icons.add_shopping_cart_rounded), text: 'Place Order'),
+            Tab(icon: Icon(Icons.history_rounded), text: 'My Orders'),
           ],
         ),
       ),

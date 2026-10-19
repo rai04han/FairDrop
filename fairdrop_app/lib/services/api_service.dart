@@ -14,6 +14,7 @@
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'core_api_service.dart';
 import 'exceptions.dart';
 import '../config/app_config.dart';
 
@@ -23,6 +24,16 @@ export 'exceptions.dart' show ApiException, TimeoutApiException;
 
 class ApiService {
   static String get _baseUrl => AppConfig.payServiceUrl;
+
+  /// Returns auth headers with Bearer token if logged in.
+  static Future<Map<String, String>> _authHeaders() async {
+    final token = await CoreApiService.getToken();
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
 
   /// Wraps an HTTP future with the configured timeout.
   static Future<http.Response> _withTimeout(Future<http.Response> request) =>
@@ -47,9 +58,10 @@ class ApiService {
     required bool delayVerified,
     required String delaySource,
   }) async {
+    final headers = await _authHeaders();
     final response = await _withTimeout(http.post(
       Uri.parse('$_baseUrl/api/pay/calculate'),
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: jsonEncode({
         'rider_id': riderId,
         'order_id': orderId,
@@ -76,8 +88,27 @@ class ApiService {
   // Called by Rider Dashboard (FR-30).
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>> getPayHistory(String riderId) async {
+    final headers = await _authHeaders();
     final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/pay/history/$riderId'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw ApiException(response.statusCode, data);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // getPayAnalytics()
+  // GET /api/pay/analytics/:rider_id
+  // Called by Pay Analytics Screen (FR-34, FR-35, FR-36).
+  // ══════════════════════════════════════════════════════════════════════════
+  static Future<Map<String, dynamic>> getPayAnalytics(String riderId) async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
+      Uri.parse('$_baseUrl/api/pay/analytics/$riderId'),
+      headers: headers,
     ));
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -87,12 +118,14 @@ class ApiService {
 
   // ══════════════════════════════════════════════════════════════════════════
   // getPayConfig()
-  // GET /api/admin/pay-config
-  // Called by Admin Panel (FR-38) and Order Acceptance (FR-12, FR-13).
+  // GET /api/pay/config
+  // Called by Order Acceptance (FR-12, FR-13, FR-75) and Admin Panel (FR-38).
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>> getPayConfig() async {
+    final headers = await _authHeaders();
     final response = await _withTimeout(http.get(
-      Uri.parse('$_baseUrl/api/admin/pay-config'),
+      Uri.parse('$_baseUrl/api/pay/config'),
+      headers: headers,
     ));
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -115,9 +148,10 @@ class ApiService {
     required String effectiveFrom,
     required String changeReason,
   }) async {
+    final headers = await _authHeaders();
     final response = await _withTimeout(http.put(
       Uri.parse('$_baseUrl/api/admin/pay-config'),
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: jsonEncode({
         'base_rate': baseRate,
         'per_km_rate': perKmRate,
@@ -141,8 +175,10 @@ class ApiService {
   // Called by Admin Panel to show config history (FR-39).
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>> getConfigHistory() async {
+    final headers = await _authHeaders();
     final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/admin/pay-config/history'),
+      headers: headers,
     ));
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;

@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "npx nodemon src/server.js",
-    "test": "node --test tests/payEngine.test.js",
-    "seed": "node src/seed.js"
+    "test": "node --test --test-concurrency=1 tests/payEngine.test.js tests/payConfig.test.js",
+    "seed": "node ../scripts/seed.js"
   },
   "keywords": [
     "fairdrop",
@@ -21,6 +21,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.12.0"
   }
 }

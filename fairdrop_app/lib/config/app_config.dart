@@ -12,15 +12,19 @@ class AppConfig {
   AppConfig._(); // Prevent instantiation
 
   // ── Service URLs ─────────────────────────────────────────────────────────
-  // Android emulator: 10.0.2.2 maps to host machine's localhost
-  // Chrome web:       localhost
-  // Physical device:  your machine's WiFi IP (e.g., 192.168.1.x)
+  // Switching between USB `adb reverse` (127.0.0.1) and hotspot (192.168.137.1)
+  // is a one-line change below (PRD §7, §10.1).
+  //
+  // Primary (USB adb reverse on phone & emulator): '127.0.0.1'
+  // Fallback (Laptop Mobile Hotspot):             '192.168.137.1'
+  // Fallback (Emulator default alias):            '10.0.2.2'
+  static const String _host = '127.0.0.1';
 
-  /// Hari's core-service: auth, orders, zones (Port 3003)
-  static const String coreServiceUrl = 'http://10.0.2.2:3003';
+  /// Core-service: auth, orders, zones (Port 3003)
+  static const String coreServiceUrl = 'http://$_host:3003';
 
-  /// Raihan's pay-service: pay calculation, history, admin config (Port 3001)
-  static const String payServiceUrl = 'http://10.0.2.2:3001';
+  /// Pay-service: pay calculation, history, admin config (Port 3001)
+  static const String payServiceUrl = 'http://$_host:3001';
 
   // ── Network ──────────────────────────────────────────────────────────────
 

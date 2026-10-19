@@ -37,6 +37,14 @@ async function createZone(req, res) {
       });
     }
 
+    const existing = await Zone.findOne({ name });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: 'A zone with this name already exists.',
+      });
+    }
+
     const zone = await Zone.create({
       name,
       boundary,
@@ -104,6 +112,7 @@ async function getMapData(req, res) {
         properties: {
           _id: zone._id,
           name: zone.name,
+          zone_id: zone.zone_id,
           outOfZoneCapKm: zone.outOfZoneCapKm,
           returnCompensationIdleWindowMins: zone.returnCompensationIdleWindowMins,
         },

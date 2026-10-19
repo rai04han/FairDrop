@@ -15,10 +15,13 @@ const mongoose = require('mongoose');
 // Enforced in the controller — prevents skipping steps or going backwards.
 
 const VALID_TRANSITIONS = {
-  placed: ['assigned'],
-  assigned: ['picked_up'],
+  placed: ['accepted', 'assigned'],
+  accepted: ['assigned', 'cancelled'],
+  assigned: ['arrived', 'picked_up'],
+  arrived: ['picked_up'],
   picked_up: ['delivered'],
   delivered: [],               // Terminal state — no further transitions
+  cancelled: [],               // Terminal state
 };
 
 // ── Status history entry ───────────────────────────────────────────────────
@@ -82,9 +85,11 @@ const orderSchema = new mongoose.Schema(
     // ── Order details ──────────────────────────────────────────────────
     items: [
       {
+        item_id: { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem', default: null },
         name: { type: String, required: true },
         quantity: { type: Number, required: true, min: 1 },
         price: { type: Number, required: true, min: 0 },
+        prep_time_seconds: { type: Number, default: 0 },
       },
     ],
 
@@ -108,6 +113,55 @@ const orderSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ── Allocation & Out-of-zone fields (FR-68, FR-73) ──────────────────
+    rider_ack: {
+      type: String,
+      enum: ['pending', 'accepted', 'declined'],
+      default: 'pending',
+    },
+    declined_by: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
+    allocation: {
+      type: String,
+      enum: ['allocated', 'no_rider_available'],
+      default: 'allocated',
+    },
+    is_out_of_zone: {
+      type: Boolean,
+      default: false,
+    },
+    out_of_zone_distance_km: {
+      type: Number,
+      default: 0,
+    },
+
+    // ── Timestamps for lifecycle stages (FR-18, FR-67, FR-69) ───────────
+    accepted_at: {
+      type: Date,
+      default: null,
+    },
+    arrived_at: {
+      type: Date,
+      default: null,
+    },
+    picked_up_at: {
+      type: Date,
+      default: null,
+    },
+    delivered_at: {
+      type: Date,
+      default: null,
+    },
+    pay_status: {
+      type: String,
+      enum: ['none', 'pending', 'calculated'],
+      default: 'none',
+    },
+
     // ── Pay-related fields ─────────────────────────────────────────────
     is_surge_active: { type: Boolean, default: false },
     restaurant_wait_mins: { type: Number, default: 0 },
@@ -126,15 +180,24 @@ const orderSchema = new mongoose.Schema(
     // ── Status tracking ────────────────────────────────────────────────
     status: {
       type: String,
-      enum: ['placed', 'assigned', 'picked_up', 'delivered'],
-      default: 'placed',
+      enum: ['placed', 'accepted', 'assigned', 'arrived', 'picked_up', 'delivered', 'cancelled'],
+      default: 'accepted',
     },
     status_history: [statusHistorySchema],
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
+
+// ── Derived is_ready property (FR-69) ──────────────────────────────────────
+orderSchema.virtual('is_ready').get(function () {
+  const baseTime = this.accepted_at || this.created_at || new Date();
+  const maxPrep = (this.items || []).reduce((max, it) => Math.max(max, it.prep_time_seconds || 0), 0);
+  return Date.now() >= new Date(baseTime).getTime() + maxPrep * 1000;
+});
 
 // ── Indexes ────────────────────────────────────────────────────────────────
 

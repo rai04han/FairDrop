@@ -57,11 +57,22 @@ class CoreApiService {
   /// Get saved user ID
   static Future<String?> getUserId() => _storage.read(key: _keyUserId);
 
-  /// Clear all auth data on logout or 401 (FR-4)
+  /// Clear all auth data on logout or 401 (FR-4, FR-54).
+  /// If the current user is a rider, notifies backend to set offline (FR-7, FR-54).
   static Future<void> logout() async {
-    await _storage.delete(key: _keyToken);
-    await _storage.delete(key: _keyRole);
-    await _storage.delete(key: _keyUserId);
+    try {
+      final role = await getUserRole();
+      if (role == 'rider') {
+        // Send offline state to backend before session is cleared (FR-54)
+        await setRiderStatus(isOnline: false).catchError((_) => <String, dynamic>{});
+      }
+    } catch (_) {
+      // Ignore network errors so storage cleanup is never blocked
+    } finally {
+      await _storage.delete(key: _keyToken);
+      await _storage.delete(key: _keyRole);
+      await _storage.delete(key: _keyUserId);
+    }
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────────
@@ -102,11 +113,24 @@ class CoreApiService {
     required String email,
     required String password,
     required String role,
+    String? vehicleType,
+    String? vehicleNumber,
+    String? phone,
   }) async {
+    final body = <String, dynamic>{
+      'name': name,
+      'email': email,
+      'password': password,
+      'role': role,
+    };
+    if (vehicleType != null) body['vehicle_type'] = vehicleType;
+    if (vehicleNumber != null) body['vehicle_number'] = vehicleNumber;
+    if (phone != null) body['phone'] = phone;
+
     final response = await _withTimeout(http.post(
       Uri.parse('$_baseUrl/api/auth/register'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'name': name, 'email': email, 'password': password, 'role': role}),
+      body: jsonEncode(body),
     ));
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -157,6 +181,97 @@ class CoreApiService {
     final headers = await _authHeaders();
     final response = await _withTimeout(http.get(
       Uri.parse('$_baseUrl/api/orders/restaurants'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// GET /api/restaurants/:id/menu — get menu for a specific restaurant (FR-57)
+  static Future<Map<String, dynamic>> getRestaurantMenu(String restaurantId) async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
+      Uri.parse('$_baseUrl/api/restaurants/$restaurantId/menu'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  // ── Restaurant Portal API (FR-62 to FR-66) ────────────────────────────────
+
+  /// GET /api/restaurants/menu — get own restaurant menu items (FR-62)
+  static Future<Map<String, dynamic>> getMyRestaurantMenu() async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
+      Uri.parse('$_baseUrl/api/restaurants/menu'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// POST /api/restaurants/menu — add a new menu item (FR-63)
+  static Future<Map<String, dynamic>> addMenuItem({
+    required String name,
+    required double price,
+    required int prepTimeSeconds,
+    bool isAvailable = true,
+  }) async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.post(
+      Uri.parse('$_baseUrl/api/restaurants/menu'),
+      headers: headers,
+      body: jsonEncode({
+        'name': name,
+        'price': price,
+        'prep_time_seconds': prepTimeSeconds,
+        'is_available': isAvailable,
+      }),
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 201) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// PATCH /api/restaurants/menu/:item_id — update item or toggle availability (FR-63, FR-64)
+  static Future<Map<String, dynamic>> updateMenuItem(
+    String itemId, {
+    String? name,
+    double? price,
+    int? prepTimeSeconds,
+    bool? isAvailable,
+  }) async {
+    final headers = await _authHeaders();
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (price != null) body['price'] = price;
+    if (prepTimeSeconds != null) body['prep_time_seconds'] = prepTimeSeconds;
+    if (isAvailable != null) body['is_available'] = isAvailable;
+
+    final response = await _withTimeout(http.patch(
+      Uri.parse('$_baseUrl/api/restaurants/menu/$itemId'),
+      headers: headers,
+      body: jsonEncode(body),
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// GET /api/restaurants/orders — list incoming orders for restaurant with is_ready (FR-65, FR-69)
+  static Future<Map<String, dynamic>> getRestaurantOrders() async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
+      Uri.parse('$_baseUrl/api/restaurants/orders'),
       headers: headers,
     ));
 
@@ -246,6 +361,45 @@ class CoreApiService {
       Uri.parse('$_baseUrl/api/orders/$orderId/status'),
       headers: headers,
       body: jsonEncode(body),
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// PATCH /api/orders/:id/accept — rider accepts allocated order (FR-15, FR-68)
+  static Future<Map<String, dynamic>> acceptOrder(String orderId) async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.patch(
+      Uri.parse('$_baseUrl/api/orders/$orderId/accept'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// PATCH /api/orders/:id/decline — rider declines allocated order without penalty (FR-15, D7)
+  static Future<Map<String, dynamic>> declineOrder(String orderId) async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.patch(
+      Uri.parse('$_baseUrl/api/orders/$orderId/decline'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// POST /api/orders/:id/retry-pay — retries pay calculation for delivered order (FR-24)
+  static Future<Map<String, dynamic>> retryPay(String orderId) async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.post(
+      Uri.parse('$_baseUrl/api/orders/$orderId/retry-pay'),
+      headers: headers,
     ));
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;

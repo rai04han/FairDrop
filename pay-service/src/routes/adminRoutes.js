@@ -1,36 +1,30 @@
 // FairDrop Pay Service — Admin Pay Config Routes
 // Owner: Raihan
 //
-// GET  /api/admin/pay-config — Returns the currently active pay configuration
-// PUT  /api/admin/pay-config — Creates a new config (old row retained for audit)
-//
-// Policy: 7-day advance notice before any pay structure change.
-//         effective_from must be >= 7 days from creation date.
-//         change_reason is mandatory (Fairwork P6 — Fair Contracts).
-//
-// Auth: JWT validation will be provided by Harikrishnan's Auth module.
-//       Currently stubbed — see TODO comments below.
+// Admin routes for managing platform pay configurations.
+// All routes require a valid JWT with the 'admin' role.
 
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
+const verifyToken = require('../middleware/verifyToken');
+const requireRole = require('../middleware/requireRole');
+
+// Enforce admin auth on all admin routes
+router.use(verifyToken);
+router.use(requireRole('admin'));
 
 // ── GET /api/admin/pay-config ──────────────────────────────────────────────
 // Returns the active pay configuration row.
-// Used by the Flutter Admin Panel to display current constants.
-
 router.get('/pay-config', async (req, res) => {
   try {
-    // TODO: Validate admin JWT from Harikrishnan's Auth module (Port 3003)
-    // const token = req.headers.authorization?.split(' ')[1];
-    // const decoded = await verifyAdminToken(token);
-
     const [configs] = await pool.execute(
       `SELECT config_id, base_rate, per_km_rate, surge_bonus,
               wait_threshold_mins, wait_compensation, min_wage_per_hour,
               effective_from, is_active, created_at, created_by, change_reason
        FROM pay_configs
-       WHERE is_active = TRUE
+       WHERE effective_from <= CURDATE()
+       ORDER BY effective_from DESC, config_id DESC
        LIMIT 1`
     );
 
@@ -44,7 +38,6 @@ router.get('/pay-config', async (req, res) => {
     return res.status(200).json({
       config: configs[0],
     });
-
   } catch (error) {
     console.error('GET /api/admin/pay-config error:', error.message);
     return res.status(500).json({
@@ -54,21 +47,37 @@ router.get('/pay-config', async (req, res) => {
   }
 });
 
-// ── PUT /api/admin/pay-config ──────────────────────────────────────────────
-// Creates a new pay configuration row.
-// The old active config is deactivated but RETAINED for audit trail.
-//
-// Enforces:
-//   1. All config fields must be present and valid
-//   2. effective_from must be >= 7 days from today (7-day notice policy)
-//   3. change_reason is mandatory (audit requirement)
-
-router.put('/pay-config', async (req, res) => {
+// ── GET /api/admin/pay-config/history ──────────────────────────────────────
+// Returns all configurations (newest effective date first) for audit trail (FR-39).
+router.get('/pay-config/history', async (req, res) => {
   try {
-    // TODO: Validate admin JWT from Harikrishnan's Auth module (Port 3003)
-    // const token = req.headers.authorization?.split(' ')[1];
-    // const decoded = await verifyAdminToken(token);
+    const [history] = await pool.execute(
+      `SELECT config_id, base_rate, per_km_rate, surge_bonus,
+              wait_threshold_mins, wait_compensation, min_wage_per_hour,
+              effective_from, is_active, created_at, created_by, change_reason
+       FROM pay_configs
+       ORDER BY effective_from DESC, config_id DESC`
+    );
 
+    return res.status(200).json({
+      success: true,
+      count: history.length,
+      history,
+    });
+  } catch (error) {
+    console.error('GET /api/admin/pay-config/history error:', error.message);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+// ── Handler for creating a new pay configuration (PUT or POST) ─────────────
+// Enforces 7-day advance notice rule (FR-41), mandatory reason (FR-42),
+// and numeric constraints (FR-43).
+async function savePayConfig(req, res) {
+  try {
     const {
       base_rate,
       per_km_rate,
@@ -76,18 +85,24 @@ router.put('/pay-config', async (req, res) => {
       wait_threshold_mins,
       wait_compensation,
       min_wage_per_hour,
+      effective_from,
       change_reason,
     } = req.body;
 
-    // ── Validate required fields ────────────────────────────────────────
+    // 1. Validate required fields
     const requiredFields = [
-      'base_rate', 'per_km_rate', 'surge_bonus',
-      'wait_threshold_mins', 'wait_compensation',
-      'min_wage_per_hour', 'change_reason',
+      'base_rate',
+      'per_km_rate',
+      'surge_bonus',
+      'wait_threshold_mins',
+      'wait_compensation',
+      'min_wage_per_hour',
+      'effective_from',
+      'change_reason',
     ];
 
     for (const field of requiredFields) {
-      if (req.body[field] === undefined || req.body[field] === null) {
+      if (req.body[field] === undefined || req.body[field] === null || req.body[field] === '') {
         return res.status(400).json({
           error: 'Validation failed',
           message: `Missing required field: ${field}`,
@@ -95,14 +110,17 @@ router.put('/pay-config', async (req, res) => {
       }
     }
 
-    // ── Validate numeric fields are positive ────────────────────────────
+    // 2. Validate numeric non-negative fields
     const numericFields = {
-      base_rate, per_km_rate, surge_bonus,
-      wait_threshold_mins, wait_compensation, min_wage_per_hour,
+      base_rate: parseFloat(base_rate),
+      per_km_rate: parseFloat(per_km_rate),
+      surge_bonus: parseFloat(surge_bonus),
+      wait_compensation: parseFloat(wait_compensation),
+      min_wage_per_hour: parseFloat(min_wage_per_hour),
     };
 
     for (const [field, value] of Object.entries(numericFields)) {
-      if (typeof value !== 'number' || value < 0) {
+      if (isNaN(value) || value < 0) {
         return res.status(400).json({
           error: 'Validation failed',
           message: `${field} must be a non-negative number`,
@@ -110,75 +128,92 @@ router.put('/pay-config', async (req, res) => {
       }
     }
 
-    // ── Validate change_reason is non-empty string ──────────────────────
+    // 3. Validate wait_threshold_mins is non-negative whole number (integer)
+    const thresholdNum = Number(wait_threshold_mins);
+    if (!Number.isInteger(thresholdNum) || thresholdNum < 0) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: 'wait_threshold_mins must be a non-negative whole integer (minutes)',
+      });
+    }
+
+    // 4. Validate change_reason is non-empty string
     if (typeof change_reason !== 'string' || change_reason.trim().length === 0) {
       return res.status(400).json({
         error: 'Validation failed',
-        message: 'change_reason must be a non-empty string (audit requirement)',
+        message: 'change_reason is mandatory and cannot be empty (audit requirement)',
       });
     }
 
-    // ── Enforce 7-day advance notice policy ─────────────────────────────
-    // Fairwork P6 (Fair Contracts P2): Workers must receive advance
-    // notice before pay structure changes take effect.
+    // 5. Enforce 7-day advance notice rule (FR-41)
+    // Date from client must be >= today + 7 days
+    const parts = String(effective_from).split('-');
+    if (parts.length !== 3) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: 'Invalid effective_from date format. Expected YYYY-MM-DD.',
+      });
+    }
+    const [y, m, d] = parts.map(Number);
+    const clientDateMidnight = new Date(y, m - 1, d);
+    if (isNaN(clientDateMidnight.getTime())) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: 'Invalid effective_from date format. Expected YYYY-MM-DD.',
+      });
+    }
+
     const today = new Date();
-    const effectiveFrom = new Date(today);
-    effectiveFrom.setDate(today.getDate() + 7);
-    const effectiveFromStr = effectiveFrom.toISOString().split('T')[0]; // YYYY-MM-DD
+    today.setHours(0, 0, 0, 0);
 
-    // ── Deactivate current config + insert new one (transaction) ────────
-    const connection = await pool.getConnection();
-    try {
-      await connection.beginTransaction();
-
-      // Deactivate all currently active configs
-      await connection.execute(
-        'UPDATE pay_configs SET is_active = FALSE WHERE is_active = TRUE'
-      );
-
-      // Insert new config as active
-      const [result] = await connection.execute(
-        `INSERT INTO pay_configs
-           (base_rate, per_km_rate, surge_bonus,
-            wait_threshold_mins, wait_compensation, min_wage_per_hour,
-            effective_from, is_active, created_by, change_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)`,
-        [
-          base_rate,
-          per_km_rate,
-          surge_bonus,
-          wait_threshold_mins,
-          wait_compensation,
-          min_wage_per_hour,
-          effectiveFromStr,
-          'admin', // TODO: Extract from JWT claims when Auth module is integrated
-          change_reason,
-        ]
-      );
-
-      await connection.commit();
-
-      return res.status(200).json({
-        message: 'Pay configuration updated successfully',
-        config_id: result.insertId,
-        effective_from: effectiveFromStr,
-        notice: '7-day advance notice applied. New config takes effect on ' + effectiveFromStr,
+    const diffDays = Math.round((clientDateMidnight - today) / (1000 * 60 * 60 * 24));
+    if (diffDays < 7) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: `7-day advance notice required. Date is ${diffDays} day(s) out; must be at least 7 days from today.`,
       });
-
-    } catch (txError) {
-      await connection.rollback();
-      throw txError;
-    } finally {
-      connection.release();
     }
 
+    const effectiveFromStr = clientDateMidnight.toISOString().split('T')[0];
+    const createdBy = req.user.id ? String(req.user.id) : (req.user.role || 'admin');
+
+    // 6. Insert new config row
+    const [result] = await pool.execute(
+      `INSERT INTO pay_configs
+         (base_rate, per_km_rate, surge_bonus,
+          wait_threshold_mins, wait_compensation, min_wage_per_hour,
+          effective_from, is_active, created_by, change_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)`,
+      [
+        numericFields.base_rate,
+        numericFields.per_km_rate,
+        numericFields.surge_bonus,
+        thresholdNum,
+        numericFields.wait_compensation,
+        numericFields.min_wage_per_hour,
+        effectiveFromStr,
+        createdBy,
+        change_reason.trim(),
+      ]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Pay configuration created successfully with 7-day advance notice.',
+      config_id: result.insertId,
+      effective_from: effectiveFromStr,
+      notice: `New config takes effect on ${effectiveFromStr}`,
+    });
   } catch (error) {
-    console.error('PUT /api/admin/pay-config error:', error.message);
+    console.error('Save pay-config error:', error.message);
     return res.status(500).json({
       error: 'Internal server error',
       message: error.message,
     });
   }
-});
+}
+
+router.put('/pay-config', savePayConfig);
+router.post('/pay-config', savePayConfig);
 
 module.exports = router;

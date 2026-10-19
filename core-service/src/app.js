@@ -12,6 +12,8 @@ const cors = require('cors');
 const authRoutes = require('./modules/auth/auth.routes');
 const orderRoutes = require('./modules/orders/order.routes');
 const zoneRoutes = require('./modules/zones/zone.routes');
+const riderRoutes = require('./modules/riders/rider.routes');
+const restaurantRoutes = require('./modules/restaurants/restaurant.routes');
 
 const app = express();
 
@@ -28,9 +30,12 @@ app.use(cors());
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/zones', zoneRoutes);
+app.use('/api/riders', riderRoutes);
+app.use('/api/rider', riderRoutes);
+app.use('/api/restaurants', restaurantRoutes);
 
 // Health check — useful for verifying the server is running
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   res.json({ status: 'ok', service: 'core-service' });
 });
 

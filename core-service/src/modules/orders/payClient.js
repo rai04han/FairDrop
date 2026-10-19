@@ -3,14 +3,12 @@
 // Module: Orders (Module 2)
 //
 // HTTP client that calls Raihan's Pay Engine when an order is delivered.
-// This is the integration point between the two services:
+// Integration point:
+//   core-service (port 3003) ──POST /api/pay/calculate──> pay-service (port 3001)
 //
-//   Hari's core-service (port 3003)
-//       ──POST /api/pay/calculate──>
-//   Raihan's pay-service (port 3004)
-//
-// Uses Node's built-in fetch() — no external HTTP library needed.
+// Forwards the caller's JWT token or generates a valid token with shared JWT_SECRET (FR-244, FR-247).
 
+const jwt = require('jsonwebtoken');
 const env = require('../../config/env');
 
 /**
@@ -18,12 +16,11 @@ const env = require('../../config/env');
  *
  * @param {Object} order - The delivered order document
  * @param {number} activeHoursToday - Rider's total active hours today
+ * @param {string} [token] - Optional caller JWT Bearer token
  * @returns {Object} Pay breakdown from pay-service
  * @throws {Error} If pay-service is unreachable or returns an error
  */
-async function calculatePay(order, activeHoursToday) {
-  // Build the request body matching the API contract exactly
-  // See: docs/api-contract.md
+async function calculatePay(order, activeHoursToday, token = null) {
   const payload = {
     rider_id: order.rider_id.toString(),
     order_id: order.order_id,
@@ -32,16 +29,23 @@ async function calculatePay(order, activeHoursToday) {
     restaurant_wait_mins: order.restaurant_wait_mins,
     active_hours_today: activeHoursToday,
     delay_context: {
-      type: order.delay_context.type,
-      verified: order.delay_context.verified,
-      source: order.delay_context.source,
+      type: order.delay_context?.type || 'none',
+      verified: order.delay_context?.verified || false,
+      source: order.delay_context?.source || 'none',
     },
   };
+
+  const authToken = token
+    ? (token.startsWith('Bearer ') ? token : `Bearer ${token}`)
+    : `Bearer ${jwt.sign({ id: order.rider_id, role: 'rider' }, env.JWT_SECRET, { expiresIn: '1h' })}`;
 
   try {
     const response = await fetch(`${env.PAY_SERVICE_URL}/api/pay/calculate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authToken,
+      },
       body: JSON.stringify(payload),
     });
 
@@ -54,7 +58,6 @@ async function calculatePay(order, activeHoursToday) {
 
     return data;
   } catch (error) {
-    // If pay-service is completely down, log but don't crash the order
     console.error('Pay Engine call failed:', error.message);
     throw error;
   }

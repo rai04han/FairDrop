@@ -7,6 +7,7 @@
 
 const jwt = require('jsonwebtoken');
 const User = require('./User.model');
+const Zone = require('../zones/Zone.model');
 const env = require('../../config/env');
 
 /**
@@ -26,11 +27,17 @@ function generateToken(user) {
  * POST /api/auth/register
  *
  * Creates a new user with the given role.
- * If the role is "rider", also initialises an empty rider_profile.
+ * If the role is "rider", assigns the zone with fewest riders (FR-51, FR-52, D1)
+ * and syncs to MySQL riders table (D12).
  */
 async function register(req, res) {
   try {
-    const { name, email, phone, password, role } = req.body;
+    let { name, email, phone, password, role, vehicle_type } = req.body;
+
+    // Default to rider if role omitted but vehicle_type provided
+    if (!role && vehicle_type) {
+      role = 'rider';
+    }
 
     // ── Validate required fields ─────────────────────────────────────────
     if (!name || !email || !password || !role) {
@@ -66,26 +73,94 @@ async function register(req, res) {
       role,
     };
 
-    // Riders get an empty profile that will be filled during onboarding
+    // Riders get least-rider assigned zone (FR-51, FR-52, D1)
     if (role === 'rider') {
+      const zones = await Zone.find();
+      let assignedZone = null;
+
+      if (zones.length > 0) {
+        // Count active riders per zone
+        const riderCounts = await Promise.all(
+          zones.map(async (zone) => {
+            const count = await User.countDocuments({
+              role: 'rider',
+              $or: [
+                { 'rider_profile.zone_id': zone._id },
+                { 'rider_profile.assigned_zone_code': zone.zone_id },
+              ],
+            });
+            return { zone, count };
+          })
+        );
+
+        // Sort by rider count ASC, then zone_id ASC (tie-breaker D1)
+        riderCounts.sort((a, b) => {
+          if (a.count !== b.count) {
+            return a.count - b.count;
+          }
+          const codeA = (a.zone.zone_id || a.zone.name || '').toUpperCase();
+          const codeB = (b.zone.zone_id || b.zone.name || '').toUpperCase();
+          return codeA.localeCompare(codeB);
+        });
+
+        assignedZone = riderCounts[0].zone;
+      }
+
       userData.rider_profile = {
-        vehicle_type: 'motorcycle',
-        vehicle_number: '',
-        zone_id: null,
-        current_zone_id: null,
+        vehicle_type: vehicle_type || 'motorcycle',
+        vehicle_number: req.body.vehicle_number || '',
+        zone_id: assignedZone ? assignedZone._id : null,
+        current_zone_id: assignedZone ? assignedZone._id : null,
+        assigned_zone_code: assignedZone ? (assignedZone.zone_id || assignedZone.name) : null,
+        current_zone_code: assignedZone ? (assignedZone.zone_id || assignedZone.name) : null,
         is_available: true,
+        is_online: false,
         active_hours_today: 0,
+        safety_checklist_acknowledged: false,
       };
     }
 
     const user = await User.create(userData);
     const token = generateToken(user);
 
+    // Sync rider to MySQL via pay-service (D12: rollback Mongo user if MySQL fails)
+    if (role === 'rider') {
+      try {
+        const payRes = await fetch(`${env.PAY_SERVICE_URL}/api/pay/riders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            rider_id: user._id.toString(),
+            name: user.name,
+          }),
+        });
+
+        if (!payRes.ok) {
+          await User.findByIdAndDelete(user._id);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to create MySQL rider record. Registration rolled back.',
+          });
+        }
+      } catch (netErr) {
+        // Network error / pay-service not running
+        console.warn('Pay service unreachable during rider signup; rider will be auto-upserted on first delivery.');
+      }
+    }
+
+    const userResponse = user.toJSON();
+    if (userResponse.rider_profile) {
+      userResponse.assigned_zone = userResponse.rider_profile.assigned_zone_code;
+    }
+
     res.status(201).json({
       success: true,
       message: 'Registration successful.',
       token,
-      user: user.toJSON(),
+      user: userResponse,
     });
   } catch (error) {
     console.error('Register error:', error.message);
@@ -133,12 +208,19 @@ async function login(req, res) {
     }
 
     const token = generateToken(user);
+    const userResponse = user.toJSON();
+    if (userResponse.rider_profile) {
+      userResponse.assigned_zone =
+        userResponse.rider_profile.assigned_zone_code ||
+        userResponse.rider_profile.current_zone_code ||
+        null;
+    }
 
     res.status(200).json({
       success: true,
       message: 'Login successful.',
       token,
-      user: user.toJSON(),
+      user: userResponse,
     });
   } catch (error) {
     console.error('Login error:', error.message);
@@ -165,9 +247,21 @@ async function getMe(req, res) {
       });
     }
 
+    const userResponse = user.toJSON();
+    if (userResponse.rider_profile) {
+      userResponse.assigned_zone =
+        userResponse.rider_profile.assigned_zone_code ||
+        userResponse.rider_profile.current_zone_code ||
+        null;
+      userResponse.current_zone =
+        userResponse.rider_profile.current_zone_code ||
+        userResponse.rider_profile.assigned_zone_code ||
+        null;
+    }
+
     res.status(200).json({
       success: true,
-      user: user.toJSON(),
+      user: userResponse,
     });
   } catch (error) {
     console.error('GetMe error:', error.message);
