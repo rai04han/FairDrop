@@ -38,7 +38,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   double _todayEarnings = 685.0;
   double _activeHoursToday = 4.25;
   double _hourlyRate = 162.0;
-  double _floorValue = 150.0;
+  double? _floorValue;
   int _deliveriesToday = 7;
   String _currentZone = 'Chinnakada & Asramam (KL-02)';
 
@@ -111,7 +111,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         _deliveriesToday = (stats['deliveries_today'] as num?)?.toInt() ?? _deliveriesToday;
         _currentZone = stats['current_zone'] as String? ?? 'Chinnakada & Asramam (KL-02)';
         _hourlyRate = _activeHoursToday > 0 ? _todayEarnings / _activeHoursToday : 162.0;
-        _floorValue = double.tryParse(config['min_wage_per_hour']?.toString() ?? '150') ?? 150.0;
+        _floorValue = double.tryParse(config['min_wage_per_hour']?.toString() ?? '');
       });
     } catch (_) {
       // Keep defaults
@@ -548,14 +548,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                   color: FairDropColors.slateMuted,
                 ),
               ),
-              Text(
-                'Kerala Min Floor ₹${_floorValue.toStringAsFixed(0)}/hr met (+₹${(_hourlyRate - _floorValue).clamp(0, 999).toStringAsFixed(0)} buffer)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: FairDropColors.brandGreen,
+              if (_floorValue != null)
+                Text(
+                  'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr met (+₹${(_hourlyRate - _floorValue!).clamp(0, 999).toStringAsFixed(0)} buffer)',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: FairDropColors.brandGreen,
+                  ),
                 ),
-              ),
               Text(
                 '₹${_todayEarnings.toStringAsFixed(0)}',
                 style: GoogleFonts.plusJakartaSans(
@@ -593,7 +594,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _buildFormulaRow(
             color: FairDropColors.payGuarantee,
             title: 'Kerala Fair Pay Top-Up',
-            subtitle: 'State wage floor adjustment ₹150/hr min',
+            subtitle: _floorValue != null
+                ? 'State wage floor adjustment ₹${_floorValue!.truncateToDouble() == _floorValue ? _floorValue!.toInt() : _floorValue!.toStringAsFixed(0)}/hr min'
+                : '',
             amount: '+₹50',
             isPositive: true,
           ),
@@ -662,14 +665,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                     color: isPositive ? FairDropColors.brandGreen : FairDropColors.brandNavy,
                   ),
                 ),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: FairDropColors.slateMuted,
+                if (subtitle.isNotEmpty)
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: FairDropColors.slateMuted,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1188,7 +1192,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '₹${_floorValue.toStringAsFixed(0)}/hr',
+                              _floorValue != null ? '₹${_floorValue!.toStringAsFixed(0)}/hr' : '—',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900,
