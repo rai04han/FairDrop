@@ -67,20 +67,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final configData = await ApiService.getPayConfig();
         if (configData['scheduled'] != null && configData['scheduled'] is Map) {
           upcoming = Map<String, dynamic>.from(configData['scheduled'] as Map);
-        } else {
-          final historyData = await ApiService.getConfigHistory();
-          final configs = (historyData['history'] ?? historyData['configs']) as List<dynamic>? ?? [];
-          final now = DateTime.now();
-          for (final c in configs) {
-            final effDate = DateTime.tryParse(c['effective_from']?.toString() ?? '');
-            if (effDate != null && effDate.isAfter(now)) {
-              upcoming = Map<String, dynamic>.from(c as Map);
-              break;
-            }
-          }
         }
       } catch (_) {
-        // Optional
+        // Optional: upcoming pay change notice is not blocking
       }
 
       setState(() {
