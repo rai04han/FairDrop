@@ -162,9 +162,13 @@ Onboarding is P1 but carries two Fairwork principles. Build it before Profile.
 
 ### 5.8 Analytics (P0)
 
-- FR-34. Separate screen, reachable from the Dashboard. Compares FairDrop earnings against a cliff-bonus model over the same deliveries, using `fl_chart`. The numbers come from a pay-service endpoint; the app does no cliff arithmetic.
-- FR-35. States the cliff-model assumptions on screen (threshold, bonus amount) so the comparison can be challenged. Assumptions are returned by the backend.
-- FR-36. Includes a labelled scenario in which the cliff model wins (a rider who clears the cliff threshold), computed by the backend. A comparison where FairDrop always wins by construction fails the balanced-framing criterion.
+- FR-34. Separate screen, reachable from the Dashboard. Compares FairDrop incentive policy against illustrative target platform incentive ladders (e.g., Zomato ladder: 19 orders = ₹306, 23 = ₹383, 25 = ₹434, 27 = ₹510) using `fl_chart`. Since base pay, distance pay, monsoon, and return pay are identical on both sides, the screen specifically compares incentives and clearly states this scope.
+- FR-35. States illustrative model assumptions and parameters transparently on screen: FairDrop linear incentive rate (configurable default ₹17.04/order), peak bonus (₹25 × 2 windows = ₹50) with interactive toggle for peak windows covered, and benchmark order targets.
+- FR-36. Balanced and transparent comparison showing FairDrop winning fairly without fabricated claims or "cliff wins" framing:
+  1. Chart of cumulative incentive vs orders 0–30 with Zomato step line, FairDrop with peak, and FairDrop without peak.
+  2. Parity table showing orders needed to achieve equal incentives (with peak: 16, 20, 23, 27; without peak: 18, 23, 26, 30).
+  3. Equal pay benchmark reached at 27 orders with peak bonus.
+  4. Explanatory notes: peak bonus assumes online presence in both windows; daily rates vary by market; platform break-even rate = expected incentive spend ÷ expected orders per rider.
 
 ### 5.9 Admin: Pay Config (P1)
 
