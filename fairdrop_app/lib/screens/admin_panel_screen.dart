@@ -1,65 +1,57 @@
 // ============================================================================
-// FairDrop — Admin Panel Screen
+// FairDrop — Admin Panel Screen (Screen 20)
 // ============================================================================
-// Owner: Raihan
-// PRD Features: F-ADMIN-01 (Pay Config Management)
-//               F-PAY-04 (7-day advance notice before pay structure change)
-//
-// PURPOSE:
-//   This screen lets an admin:
-//   1. VIEW the current pay configuration (base rate, per km rate, etc.)
-//   2. UPDATE the config with new values
-//   3. See the 7-day advance notice applied automatically
-//
-//   Every config change requires a REASON (audit trail — Fairwork P6).
-//
-// DATA FLOW:
-//   Screen loads → GET /api/admin/pay-config → displays current config
-//   Admin edits form → taps "Update" → confirmation dialog
-//   → PUT /api/admin/pay-config → server enforces 7-day notice
-//   → new config saved → success message with effective_from date
+// Owner: Raihan (25MCA044)
+// PRD Features: FR-38 (Active Config Read), FR-39 (Config History & Audit Trail),
+//               FR-40 to FR-42 (Pay Revision & 7-Day Rule),
+//               FR-43 (Client-side Numeric Validation),
+//               FR-44 (Old → New Diff Comparison Confirmation Dialog),
+//               FR-45 (Audit Trail & Status Refresh)
+// Fairwork Principles: Fair Contracts P6 (7-day advance notice & recorded reasons),
+//                      Fair Pay P1 & P2 (Living wage floor & transparent rates)
 // ============================================================================
 
 import 'package:flutter/material.dart';
-
-// Import our API service to make HTTP calls to the Pay Engine
+import '../config/theme.dart';
 import '../services/api_service.dart';
 
-// ============================================================================
-// AdminPanelScreen — StatefulWidget
-// ============================================================================
-// StatefulWidget because:
-//   - Config data loads from API on screen open (state changes)
-//   - Admin edits form values (state changes)
-//   - Loading spinner shows during API calls (state changes)
 class AdminPanelScreen extends StatefulWidget {
-  const AdminPanelScreen({super.key});
+  final Map<String, dynamic>? initialConfig;
+  final List<Map<String, dynamic>>? initialHistory;
+  final DateTime? initialEffectiveDate;
+  final bool autoFetch;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> params)? onUpdateConfig;
+
+  const AdminPanelScreen({
+    super.key,
+    this.initialConfig,
+    this.initialHistory,
+    this.initialEffectiveDate,
+    this.autoFetch = true,
+    this.onUpdateConfig,
+  });
 
   @override
   State<AdminPanelScreen> createState() => _AdminPanelScreenState();
 }
 
 class _AdminPanelScreenState extends State<AdminPanelScreen> {
-  // ── State Variables ─────────────────────────────────────────────────────
+  // ── State Variables ─────────────────────────────────────────────────────────
+  bool _isLoading = true;
+  bool _isUpdating = false;
 
-  // Loading states — separate for initial load vs update
-  bool _isLoadingConfig = true; // true on first load
-  bool _isUpdating = false; // true while saving new config
-
-  // Stores the current config from the server
   Map<String, dynamic>? _currentConfig;
+  List<Map<String, dynamic>> _configHistory = [];
 
-  // Error and success messages
   String? _errorMessage;
   String? _successMessage;
 
-  // FR-41: Effective-from date for the new config (must be ≥ today + 7 days)
+  // Selected future effective date (must be ≥ today + 7 days)
   DateTime? _selectedEffectiveDate;
 
-  // ── Form Controllers ──────────────────────────────────────────────────
-  // Each controller holds the value of one form field.
-  // Initialized empty — filled with current values after API loads.
+  final _formKey = GlobalKey<FormState>();
 
+  // ── Form Controllers ────────────────────────────────────────────────────────
   final _baseRateController = TextEditingController();
   final _perKmRateController = TextEditingController();
   final _surgeBonusController = TextEditingController();
@@ -68,19 +60,38 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   final _minWageController = TextEditingController();
   final _changeReasonController = TextEditingController();
 
-  // ── Lifecycle: initState() ────────────────────────────────────────────
-  // initState() is called ONCE when this screen is first created.
-  // We use it to load the current config from the server immediately.
-  //
-  // Think of it as: "do this setup work as soon as the screen appears."
   @override
   void initState() {
-    super.initState(); // Always call super.initState() first
-    _loadConfig(); // Fetch current config from server
+    super.initState();
+    if (widget.initialEffectiveDate != null) {
+      _selectedEffectiveDate = widget.initialEffectiveDate;
+    }
+    if (widget.initialConfig != null || widget.initialHistory != null) {
+      _applyLoadedData(widget.initialConfig, widget.initialHistory ?? []);
+    } else if (widget.autoFetch) {
+      _loadData();
+    } else {
+      _isLoading = false;
+    }
   }
 
-  // ── Lifecycle: dispose() ──────────────────────────────────────────────
-  // Clean up all controllers to prevent memory leaks.
+  void _applyLoadedData(Map<String, dynamic>? config, List<dynamic> rawHistory) {
+    if (config != null) {
+      _baseRateController.text = _formatValue(config['base_rate']);
+      _perKmRateController.text = _formatValue(config['per_km_rate']);
+      _surgeBonusController.text = _formatValue(config['surge_bonus']);
+      _waitThresholdController.text = config['wait_threshold_mins'].toString();
+      _waitCompController.text = _formatValue(config['wait_compensation']);
+      _minWageController.text = _formatValue(config['min_wage_per_hour']);
+    }
+
+    setState(() {
+      _currentConfig = config;
+      _configHistory = rawHistory.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      _isLoading = false;
+    });
+  }
+
   @override
   void dispose() {
     _baseRateController.dispose();
@@ -93,80 +104,280 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     super.dispose();
   }
 
-  // ── API Call: _loadConfig() ───────────────────────────────────────────
-  // Fetches the current active pay configuration from the server.
-  // Called on screen load (initState) and after a successful update.
-  Future<void> _loadConfig() async {
+  // ── Fetch Active Config & History Concurrently (FR-38, FR-39) ───────────────
+  Future<void> _loadData() async {
     setState(() {
-      _isLoadingConfig = true;
+      _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      // GET /api/admin/pay-config
-      final response = await ApiService.getPayConfig();
-      final config = response['config'];
+      final results = await Future.wait([
+        ApiService.getPayConfig(),
+        ApiService.getConfigHistory(),
+      ]);
 
-      // Fill form fields with current values from the server.
-      // The server returns decimal strings like "15.00" — we display them as-is.
-      _baseRateController.text = _formatValue(config['base_rate']);
-      _perKmRateController.text = _formatValue(config['per_km_rate']);
-      _surgeBonusController.text = _formatValue(config['surge_bonus']);
-      _waitThresholdController.text = config['wait_threshold_mins'].toString();
-      _waitCompController.text = _formatValue(config['wait_compensation']);
-      _minWageController.text = _formatValue(config['min_wage_per_hour']);
+      final activeData = results[0];
+      final historyData = results[1];
 
-      setState(() {
-        _currentConfig = config;
-        _isLoadingConfig = false;
-      });
+      final config = activeData['config'] as Map<String, dynamic>?;
+      final rawHistory = historyData['history'] as List<dynamic>? ?? [];
+
+      _applyLoadedData(config, rawHistory);
     } on ApiException catch (e) {
       setState(() {
-        _errorMessage = e.body['message'] ?? 'Failed to load config';
-        _isLoadingConfig = false;
+        _errorMessage = e.body['message'] ?? 'Failed to load configuration';
+        _isLoading = false;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Connection failed. Is the server running?\n\n'
-            'Start it with: cd pay-service && npm start\n\nError: $e';
-        _isLoadingConfig = false;
+        _errorMessage = 'Connection failed. Is the pay-service running on port 3001?\n$e';
+        _isLoading = false;
       });
     }
   }
 
-  // ── Helper: _formatValue() ────────────────────────────────────────────
-  // MySQL returns decimals as strings ("15.00"). This helper removes
-  // trailing zeros for cleaner display ("15.00" → "15", "6.50" → "6.5").
   String _formatValue(dynamic value) {
     if (value == null) return '0';
     final doubleVal = double.tryParse(value.toString()) ?? 0;
-    // If it's a whole number, show without decimals
     if (doubleVal == doubleVal.toInt().toDouble()) {
       return doubleVal.toInt().toString();
     }
-    return doubleVal.toString();
+    return doubleVal.toStringAsFixed(2);
   }
 
-  // ── API Call: _updateConfig() ─────────────────────────────────────────
-  // Sends the new config values to the server.
-  // Called after the user confirms the 7-day notice dialog.
-  Future<void> _updateConfig() async {
-    // Validate change reason is not empty (FR-42)
-    if (_changeReasonController.text.trim().isEmpty) {
-      setState(() {
-        _errorMessage = 'Change reason is required (audit trail requirement)';
-      });
+  // ── Client-side Validation & Show Diff Modal (FR-43, FR-44) ─────────────────
+  void _handleInitiateUpdate() {
+    setState(() {
+      _errorMessage = null;
+    });
+
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    // Validate effective date is selected (FR-41)
+    // Effective date validation (FR-41)
     if (_selectedEffectiveDate == null) {
       setState(() {
-        _errorMessage = 'Please select an effective-from date (must be at least 7 days from today)';
+        _errorMessage = 'Please select an effective-from date (min 7 days notice required)';
       });
       return;
     }
 
+    final today = DateTime.now();
+    final todayMidnight = DateTime(today.year, today.month, today.day);
+    final selectedMidnight = DateTime(
+      _selectedEffectiveDate!.year,
+      _selectedEffectiveDate!.month,
+      _selectedEffectiveDate!.day,
+    );
+    final daysDifference = selectedMidnight.difference(todayMidnight).inDays;
+
+    if (daysDifference < 7) {
+      setState(() {
+        _errorMessage = 'Effective date must be at least 7 full days from today. '
+            'Selected date is only $daysDifference days ahead.';
+      });
+      return;
+    }
+
+    _showDiffConfirmationDialog(daysDifference);
+  }
+
+  // ── Old → New Diff Confirmation Dialog (FR-44) ──────────────────────────────
+  void _showDiffConfirmationDialog(int noticeDays) {
+    final oldBase = double.tryParse(_currentConfig?['base_rate']?.toString() ?? '0') ?? 0;
+    final newBase = double.tryParse(_baseRateController.text) ?? 0;
+
+    final oldPerKm = double.tryParse(_currentConfig?['per_km_rate']?.toString() ?? '0') ?? 0;
+    final newPerKm = double.tryParse(_perKmRateController.text) ?? 0;
+
+    final oldSurge = double.tryParse(_currentConfig?['surge_bonus']?.toString() ?? '0') ?? 0;
+    final newSurge = double.tryParse(_surgeBonusController.text) ?? 0;
+
+    final oldWaitThreshold = int.tryParse(_currentConfig?['wait_threshold_mins']?.toString() ?? '0') ?? 0;
+    final newWaitThreshold = int.tryParse(_waitThresholdController.text) ?? 0;
+
+    final oldWaitComp = double.tryParse(_currentConfig?['wait_compensation']?.toString() ?? '0') ?? 0;
+    final newWaitComp = double.tryParse(_waitCompController.text) ?? 0;
+
+    final oldMinWage = double.tryParse(_currentConfig?['min_wage_per_hour']?.toString() ?? '0') ?? 0;
+    final newMinWage = double.tryParse(_minWageController.text) ?? 0;
+
+    final diffItems = [
+      _DiffItem('Base Rate', '₹${oldBase.toStringAsFixed(2)}', '₹${newBase.toStringAsFixed(2)}', oldBase != newBase),
+      _DiffItem('Per-Km Rate', '₹${oldPerKm.toStringAsFixed(2)}/km', '₹${newPerKm.toStringAsFixed(2)}/km', oldPerKm != newPerKm),
+      _DiffItem('Surge Bonus', '₹${oldSurge.toStringAsFixed(2)}', '₹${newSurge.toStringAsFixed(2)}', oldSurge != newSurge),
+      _DiffItem('Wait Threshold', '$oldWaitThreshold min', '$newWaitThreshold min', oldWaitThreshold != newWaitThreshold),
+      _DiffItem('Wait Comp', '₹${oldWaitComp.toStringAsFixed(2)}', '₹${newWaitComp.toStringAsFixed(2)}', oldWaitComp != newWaitComp),
+      _DiffItem('Min Wage Floor', '₹${oldMinWage.toStringAsFixed(2)}/hr', '₹${newMinWage.toStringAsFixed(2)}/hr', oldMinWage != newMinWage),
+    ];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        key: const Key('admin_diff_dialog'),
+        icon: const Icon(Icons.compare_arrows, color: FairDropColors.brandGreen, size: 32),
+        title: const Text(
+          'Confirm Pay Structure Revision',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Statutory Notice Banner
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: FairDropColors.mintBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: FairDropColors.mintBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified, color: FairDropColors.brandGreen, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '7-Day Advance Notice: $noticeDays days scheduled (Fairwork P6 Compliant)',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: FairDropColors.brandGreenDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                const Text(
+                  'Comparison (Current vs. Proposed):',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+
+                // Diff Table (FR-44)
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Column(
+                    children: diffItems.map((item) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: item.isChanged ? Colors.amber.shade50 : Colors.transparent,
+                          border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                item.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: item.isChanged ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                item.oldValue,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                  decoration: item.isChanged ? TextDecoration.lineThrough : null,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward, size: 14, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                item.newValue,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: item.isChanged ? FairDropColors.brandGreen : FairDropColors.brandNavy,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: item.isChanged ? Colors.amber.shade100 : Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                item.isChanged ? 'CHANGED' : 'Same',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: item.isChanged ? Colors.brown.shade800 : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+                Text(
+                  'Effective From: ${_selectedEffectiveDate!.day.toString().padLeft(2, '0')}/'
+                  '${_selectedEffectiveDate!.month.toString().padLeft(2, '0')}/'
+                  '${_selectedEffectiveDate!.year}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Reason: "${_changeReasonController.text.trim()}"',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    fontSize: 12,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            key: const Key('admin_confirm_diff_button'),
+            style: FilledButton.styleFrom(backgroundColor: FairDropColors.brandGreen),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              _executeConfigUpdate();
+            },
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text('Confirm & Schedule'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Execute Server PUT Request (FR-40–FR-42) ────────────────────────────────
+  Future<void> _executeConfigUpdate() async {
     setState(() {
       _isUpdating = true;
       _errorMessage = null;
@@ -174,540 +385,648 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     });
 
     try {
-      // Format effective date as YYYY-MM-DD for the API
-      final effectiveDateStr =
-          '${_selectedEffectiveDate!.year}-'
+      final effectiveDateStr = '${_selectedEffectiveDate!.year}-'
           '${_selectedEffectiveDate!.month.toString().padLeft(2, "0")}-'
           '${_selectedEffectiveDate!.day.toString().padLeft(2, "0")}';
 
-      // PUT /api/admin/pay-config
-      final response = await ApiService.updatePayConfig(
-        baseRate: double.tryParse(_baseRateController.text) ?? 0,
-        perKmRate: double.tryParse(_perKmRateController.text) ?? 0,
-        surgeBonus: double.tryParse(_surgeBonusController.text) ?? 0,
-        waitThresholdMins:
-            int.tryParse(_waitThresholdController.text) ?? 0,
-        waitCompensation: double.tryParse(_waitCompController.text) ?? 0,
-        minWagePerHour: double.tryParse(_minWageController.text) ?? 0,
-        effectiveFrom: effectiveDateStr,
-        changeReason: _changeReasonController.text.trim(),
-      );
+      final Map<String, dynamic> response;
+      if (widget.onUpdateConfig != null) {
+        response = await widget.onUpdateConfig!({
+          'base_rate': double.parse(_baseRateController.text),
+          'per_km_rate': double.parse(_perKmRateController.text),
+          'surge_bonus': double.parse(_surgeBonusController.text),
+          'wait_threshold_mins': int.parse(_waitThresholdController.text),
+          'wait_compensation': double.parse(_waitCompController.text),
+          'min_wage_per_hour': double.parse(_minWageController.text),
+          'effective_from': effectiveDateStr,
+          'change_reason': _changeReasonController.text.trim(),
+        });
+      } else {
+        response = await ApiService.updatePayConfig(
+          baseRate: double.parse(_baseRateController.text),
+          perKmRate: double.parse(_perKmRateController.text),
+          surgeBonus: double.parse(_surgeBonusController.text),
+          waitThresholdMins: int.parse(_waitThresholdController.text),
+          waitCompensation: double.parse(_waitCompController.text),
+          minWagePerHour: double.parse(_minWageController.text),
+          effectiveFrom: effectiveDateStr,
+          changeReason: _changeReasonController.text.trim(),
+        );
+      }
 
       setState(() {
-        _successMessage = '${response['message']}\n\n'
-            'Effective from: ${response['effective_from']}\n'
-            '${response['notice']}';
+        _successMessage = 'Pay configuration revision successfully scheduled!\n'
+            'Notice: ${response['notice'] ?? 'Effective from $effectiveDateStr.'}';
         _isUpdating = false;
+        _changeReasonController.clear();
+        _selectedEffectiveDate = null;
       });
 
-      // Clear the change reason field after successful update
-      _changeReasonController.clear();
-      _selectedEffectiveDate = null;
-
-      // Reload config to show the updated values
-      await _loadConfig();
+      // Reload active config & history table (FR-45)
+      if (widget.autoFetch) {
+        await _loadData();
+      }
     } on ApiException catch (e) {
       setState(() {
-        _errorMessage = e.body['message'] ?? 'Failed to update config';
+        _errorMessage = e.body['message'] ?? 'Failed to update configuration';
         _isUpdating = false;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Connection failed: $e';
+        _errorMessage = 'Error saving pay revision: $e';
         _isUpdating = false;
       });
     }
   }
 
-  // ── Confirmation Dialog ───────────────────────────────────────────────
-  // Shows a dialog confirming the 7-day advance notice policy
-  // BEFORE sending the update to the server.
-  //
-  // This is Fairwork P6 (Fair Contracts): workers must receive advance
-  // notice before pay structure changes take effect.
-  void _showConfirmationDialog() {
-    // Validate change reason first (FR-42)
-    if (_changeReasonController.text.trim().isEmpty) {
-      setState(() {
-        _errorMessage = 'Please enter a change reason before updating';
-      });
-      return;
-    }
-
-    // Validate effective date is selected (FR-41)
-    if (_selectedEffectiveDate == null) {
-      setState(() {
-        _errorMessage = 'Please select an effective-from date before updating';
-      });
-      return;
-    }
-
-    // showDialog() creates a modal popup that blocks interaction
-    // with the screen behind it until dismissed.
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          // Dialog icon
-          icon: Icon(
-            Icons.policy,
-            color: Theme.of(context).colorScheme.primary,
-            size: 32,
-          ),
-
-          // Dialog title
-          title: const Text('7-Day Advance Notice'),
-
-          // Dialog content — explains the policy
-          content: Column(
-            mainAxisSize: MainAxisSize.min, // Don't expand to full height
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Per Fairwork P6 (Fair Contracts), pay structure changes '
-                'require 7 days advance notice to workers.',
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Change reason:',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _changeReasonController.text,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontStyle: FontStyle.italic,
-                    ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.calendar_today,
-                        size: 16,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onPrimaryContainer),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Effective from: ${_selectedEffectiveDate!.day}/${_selectedEffectiveDate!.month}/${_selectedEffectiveDate!.year}',
-                        style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onPrimaryContainer,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          // Dialog buttons
-          actions: [
-            // Cancel button — closes dialog without doing anything
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-
-            // Confirm button — closes dialog AND calls _updateConfig()
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(dialogContext); // Close the dialog first
-                _updateConfig(); // Then send the update
-              },
-              child: const Text('Confirm Update'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // ── Build the UI ──────────────────────────────────────────────────────
+  // ── Main Build Method ───────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text('Admin Panel'),
+        title: const Text('Admin Panel — Pay Governance'),
+        backgroundColor: FairDropColors.brandNavy,
+        foregroundColor: Colors.white,
         actions: [
-          // Refresh button in the app bar — reloads config from server
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _isLoadingConfig ? null : _loadConfig,
-            tooltip: 'Reload config',
+            tooltip: 'Reload configs',
+            onPressed: _isLoading ? null : _loadData,
           ),
         ],
       ),
-      body: _isLoadingConfig
-          // Show loading spinner while fetching config
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // ── Success Message ──────────────────────────────────
-                  if (_successMessage != null)
-                    Card(
-                      color: Colors.green.withValues(alpha: 0.1),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.check_circle,
-                                color: Colors.green),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _successMessage!,
-                                style:
-                                    const TextStyle(color: Colors.green),
-                              ),
-                            ),
-                          ],
-                        ),
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── Status Banners ─────────────────────────────────────────
+                    if (_successMessage != null)
+                      _buildAlertBanner(
+                        icon: Icons.check_circle,
+                        color: Colors.green,
+                        message: _successMessage!,
                       ),
-                    ),
-
-                  if (_successMessage != null) const SizedBox(height: 16),
-
-                  // ── Error Message ────────────────────────────────────
-                  if (_errorMessage != null)
-                    Card(
-                      color: theme.colorScheme.errorContainer,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.error_outline,
-                                color:
-                                    theme.colorScheme.onErrorContainer),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                    color: theme
-                                        .colorScheme.onErrorContainer),
-                              ),
-                            ),
-                          ],
-                        ),
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 8),
+                      _buildAlertBanner(
+                        icon: Icons.error_outline,
+                        color: Colors.red,
+                        message: _errorMessage!,
                       ),
-                    ),
+                    ],
+                    const SizedBox(height: 12),
 
-                  if (_errorMessage != null) const SizedBox(height: 16),
+                    // ── Active Configuration Card (FR-38) ──────────────────────
+                    if (_currentConfig != null) _buildActiveConfigCard(theme),
+                    const SizedBox(height: 16),
 
-                  // ── Current Config Info ──────────────────────────────
-                  if (_currentConfig != null) _buildConfigInfo(theme),
+                    // ── Edit & Revision Form (FR-40–FR-43) ─────────────────────
+                    _buildRevisionFormCard(theme),
+                    const SizedBox(height: 24),
 
-                  const SizedBox(height: 16),
+                    // ── Configuration History & Audit Trail (FR-39) ────────────
+                    _buildHistorySection(theme),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
 
-                  // ── Config Edit Form ─────────────────────────────────
-                  _buildConfigForm(theme),
+  Widget _buildAlertBanner({required IconData icon, required Color color, required String message}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                  const SizedBox(height: 16),
+  // ── Active Configuration Card (FR-38) ───────────────────────────────────────
+  Widget _buildActiveConfigCard(ThemeData theme) {
+    final effectiveStr = _currentConfig!['effective_from']?.toString().split('T').first ?? 'N/A';
 
-                  // ── Update Button ────────────────────────────────────
-                  FilledButton.icon(
-                    onPressed:
-                        _isUpdating ? null : _showConfirmationDialog,
-                    icon: _isUpdating
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save),
-                    label: Text(_isUpdating
-                        ? 'Updating...'
-                        : 'Update Pay Config'),
-                    style: FilledButton.styleFrom(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 16),
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.verified, color: FairDropColors.brandGreen, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  'Currently Active Configuration',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: FairDropColors.brandNavy,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: FairDropColors.mintBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: FairDropColors.mintBorder),
+                  ),
+                  child: Text(
+                    'Config #${_currentConfig!['config_id']}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: FairDropColors.brandGreenDark,
                     ),
                   ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                _buildMetricChip('Base Pay', '₹${_formatValue(_currentConfig!['base_rate'])}'),
+                _buildMetricChip('Distance', '₹${_formatValue(_currentConfig!['per_km_rate'])}/km'),
+                _buildMetricChip('Surge', '₹${_formatValue(_currentConfig!['surge_bonus'])}'),
+                _buildMetricChip('Wait Threshold', '${_currentConfig!['wait_threshold_mins']} min'),
+                _buildMetricChip('Wait Comp', '₹${_formatValue(_currentConfig!['wait_compensation'])}'),
+                _buildMetricChip('Statutory Floor', '₹${_formatValue(_currentConfig!['min_wage_per_hour'])}/hr'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Effective Since: $effectiveStr  •  Created by: ${_currentConfig!['created_by'] ?? 'admin'}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            if (_currentConfig!['change_reason'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Reason: "${_currentConfig!['change_reason']}"',
+                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey.shade700),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                  const SizedBox(height: 16),
+  Widget _buildMetricChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
 
-                  // ── Policy Notice ────────────────────────────────────
-                  Card(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(Icons.policy,
-                              color:
-                                  theme.colorScheme.onSurfaceVariant),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Fairwork P6: All pay config changes require '
-                              '7-day advance notice and a documented reason.',
-                              style:
-                                  theme.textTheme.bodySmall?.copyWith(
-                                color:
-                                    theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+  // ── Revision Form (FR-40–FR-43) ─────────────────────────────────────────────
+  Widget _buildRevisionFormCard(ThemeData theme) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.edit_calendar, color: FairDropColors.brandOrange),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Propose Pay Structure Revision',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Per Fairwork P6, revisions require a documented reason and at least 7 days advance notice.',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              const Divider(height: 24),
+
+              // Form inputs with client-side numeric validation (FR-43)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildValidatedField(
+                      key: const Key('admin_base_rate_field'),
+                      controller: _baseRateController,
+                      label: 'Base Rate (₹)',
+                      icon: Icons.attach_money,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        final num = double.tryParse(val);
+                        if (num == null) return 'Invalid number';
+                        if (num <= 0) return 'Must be > 0';
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildValidatedField(
+                      key: const Key('admin_per_km_rate_field'),
+                      controller: _perKmRateController,
+                      label: 'Per-Km Rate (₹/km)',
+                      icon: Icons.route,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        final num = double.tryParse(val);
+                        if (num == null) return 'Invalid number';
+                        if (num < 0) return 'Must be ≥ 0';
+                        return null;
+                      },
                     ),
                   ),
                 ],
               ),
-            ),
-    );
-  }
+              const SizedBox(height: 12),
 
-  // ══════════════════════════════════════════════════════════════════════
-  // CURRENT CONFIG INFO — Shows metadata about the active config
-  // ══════════════════════════════════════════════════════════════════════
-  Widget _buildConfigInfo(ThemeData theme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.info_outline,
-                    color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  'Active Configuration',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildValidatedField(
+                      key: const Key('admin_surge_bonus_field'),
+                      controller: _surgeBonusController,
+                      label: 'Surge Bonus (₹ flat)',
+                      icon: Icons.flash_on,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        final num = double.tryParse(val);
+                        if (num == null) return 'Invalid number';
+                        if (num < 0) return 'Must be ≥ 0';
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildValidatedField(
+                      key: const Key('admin_wait_threshold_field'),
+                      controller: _waitThresholdController,
+                      label: 'Wait Threshold (whole mins)',
+                      icon: Icons.timer,
+                      isInteger: true,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        final num = int.tryParse(val);
+                        if (num == null) return 'Must be whole integer';
+                        if (num < 1) return 'Must be ≥ 1 min';
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildValidatedField(
+                      key: const Key('admin_wait_comp_field'),
+                      controller: _waitCompController,
+                      label: 'Wait Comp (₹ flat)',
+                      icon: Icons.hourglass_bottom,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        final num = double.tryParse(val);
+                        if (num == null) return 'Invalid number';
+                        if (num < 0) return 'Must be ≥ 0';
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildValidatedField(
+                      key: const Key('admin_min_wage_field'),
+                      controller: _minWageController,
+                      label: 'Min Wage Floor (₹/hr)',
+                      icon: Icons.shield,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        final num = double.tryParse(val);
+                        if (num == null) return 'Invalid number';
+                        if (num <= 0) return 'Must be > 0';
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Mandatory Change Reason (FR-42)
+              TextFormField(
+                key: const Key('admin_change_reason_field'),
+                controller: _changeReasonController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Mandatory Change Reason / Justification *',
+                  hintText: 'e.g. Annual inflation wage adjustment under Kerala Gig Policy',
+                  prefixIcon: Icon(Icons.rate_review),
+                  border: OutlineInputBorder(),
+                  helperText: 'Recorded in audit trail (Fairwork P6)',
+                ),
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'Change reason is mandatory for audit trail compliance.';
+                  }
+                  if (val.trim().length < 5) {
+                    return 'Please provide a descriptive reason (at least 5 characters).';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // Effective Date Picker (FR-41)
+              InkWell(
+                key: const Key('admin_effective_date_picker'),
+                onTap: () async {
+                  final earliestAllowed = DateTime.now().add(const Duration(days: 7));
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _selectedEffectiveDate ?? earliestAllowed,
+                    firstDate: earliestAllowed,
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                    helpText: 'Select effective date (≥ 7 days notice)',
+                  );
+                  if (picked != null) {
+                    setState(() => _selectedEffectiveDate = picked);
+                  }
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Effective From Date (Min 7-Day Advance Notice) *',
+                    prefixIcon: Icon(Icons.calendar_month),
+                    border: OutlineInputBorder(),
+                    helperText: 'Workers receive automatic notice once scheduled.',
+                  ),
+                  child: Text(
+                    _selectedEffectiveDate != null
+                        ? '${_selectedEffectiveDate!.day.toString().padLeft(2, '0')}/'
+                          '${_selectedEffectiveDate!.month.toString().padLeft(2, '0')}/'
+                          '${_selectedEffectiveDate!.year}'
+                        : 'Tap to select date (minimum 7 days ahead)',
+                    style: TextStyle(
+                      fontWeight: _selectedEffectiveDate != null ? FontWeight.bold : FontWeight.normal,
+                      color: _selectedEffectiveDate != null ? FairDropColors.brandNavy : Colors.grey.shade600,
+                    ),
                   ),
                 ),
-              ],
-            ),
-            const Divider(height: 24),
+              ),
+              const SizedBox(height: 18),
 
-            // Config ID and creation info
-            _buildInfoRow(
-                theme, 'Config ID', '#${_currentConfig!['config_id']}'),
-            _buildInfoRow(
-                theme, 'Created by', _currentConfig!['created_by'] ?? 'system'),
-            _buildInfoRow(theme, 'Change reason',
-                _currentConfig!['change_reason'] ?? 'N/A'),
-          ],
+              // Submit Button
+              FilledButton.icon(
+                key: const Key('admin_update_button'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: FairDropColors.brandNavy,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed: _isUpdating ? null : _handleInitiateUpdate,
+                icon: _isUpdating
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.preview),
+                label: Text(
+                  _isUpdating ? 'Scheduling Revision...' : 'Review & Confirm Pay Revision (Diff)',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // ── Helper: _buildInfoRow ─────────────────────────────────────────────
-  Widget _buildInfoRow(ThemeData theme, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // CONFIG EDIT FORM — Text fields for each pay constant
-  // ══════════════════════════════════════════════════════════════════════
-  Widget _buildConfigForm(ThemeData theme) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.tune, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  'Pay Constants',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-
-            // ── Base Rate ─────────────────────────────────────────────
-            _buildConfigField(
-              controller: _baseRateController,
-              label: 'Base Rate (₹/delivery)',
-              hint: 'Fixed amount per delivery',
-              icon: Icons.attach_money,
-            ),
-            const SizedBox(height: 12),
-
-            // ── Per Km Rate ───────────────────────────────────────────
-            _buildConfigField(
-              controller: _perKmRateController,
-              label: 'Per Km Rate (₹/km)',
-              hint: 'Distance-based pay',
-              icon: Icons.route,
-            ),
-            const SizedBox(height: 12),
-
-            // ── Surge Bonus ───────────────────────────────────────────
-            _buildConfigField(
-              controller: _surgeBonusController,
-              label: 'Surge Bonus (₹ flat)',
-              hint: 'Peak hour bonus',
-              icon: Icons.flash_on,
-            ),
-            const SizedBox(height: 12),
-
-            // ── Wait Threshold ────────────────────────────────────────
-            _buildConfigField(
-              controller: _waitThresholdController,
-              label: 'Wait Threshold (minutes)',
-              hint: 'Minutes before compensation kicks in',
-              icon: Icons.timer,
-            ),
-            const SizedBox(height: 12),
-
-            // ── Wait Compensation ─────────────────────────────────────
-            _buildConfigField(
-              controller: _waitCompController,
-              label: 'Wait Compensation (₹ flat)',
-              hint: 'Paid when wait exceeds threshold',
-              icon: Icons.hourglass_bottom,
-            ),
-            const SizedBox(height: 12),
-
-            // ── Minimum Wage ──────────────────────────────────────────
-            _buildConfigField(
-              controller: _minWageController,
-              label: 'Minimum Wage Floor (₹/hr)',
-              hint: 'Kerala minimum wage baseline',
-              icon: Icons.shield,
-            ),
-
-            const Divider(height: 32),
-
-            // ── Change Reason (mandatory) ─────────────────────────────
-            // This field is REQUIRED — the server rejects updates without it.
-            // It's stored in the pay_configs table for audit trail.
-            TextField(
-              controller: _changeReasonController,
-              maxLines: 3, // Multiline for detailed reasons
-              decoration: InputDecoration(
-                labelText: 'Change Reason *',
-                hintText: 'e.g., "Adjusted base rate for Q4 2026 review"',
-                prefixIcon: const Icon(Icons.edit_note),
-                border: const OutlineInputBorder(),
-                // Red asterisk hint that this field is required
-                helperText: 'Required — stored as audit trail (Fairwork P6)',
-                helperStyle: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // ── Effective Date Picker (FR-41) ─────────────────────────
-            // FR-41: Cannot select earlier than today + 7 days
-            InkWell(
-              onTap: () async {
-                final minDate = DateTime.now().add(const Duration(days: 7));
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: _selectedEffectiveDate ?? minDate,
-                  firstDate: minDate,
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                  helpText: 'Select effective date (min 7 days notice)',
-                );
-                if (picked != null) {
-                  setState(() => _selectedEffectiveDate = picked);
-                }
-              },
-              child: InputDecorator(
-                decoration: InputDecoration(
-                  labelText: 'Effective From Date *',
-                  prefixIcon: const Icon(Icons.calendar_today),
-                  border: const OutlineInputBorder(),
-                  helperText: 'Must be at least 7 days from today (Fairwork P6)',
-                  helperStyle: TextStyle(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                child: Text(
-                  _selectedEffectiveDate != null
-                      ? '${_selectedEffectiveDate!.day.toString().padLeft(2, "0")}/'
-                        '${_selectedEffectiveDate!.month.toString().padLeft(2, "0")}/'
-                        '${_selectedEffectiveDate!.year}'
-                      : 'Tap to select date',
-                  style: TextStyle(
-                    color: _selectedEffectiveDate != null
-                        ? theme.colorScheme.onSurface
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Helper: _buildConfigField ─────────────────────────────────────────
-  // Creates a number input field for a pay constant.
-  // Extracted to avoid repeating the same TextField code 6 times.
-  Widget _buildConfigField({
+  Widget _buildValidatedField({
+    required Key key,
     required TextEditingController controller,
     required String label,
-    required String hint,
     required IconData icon,
+    required String? Function(String?) validator,
+    bool isInteger = false,
   }) {
-    return TextField(
+    return TextFormField(
+      key: key,
       controller: controller,
-      keyboardType: TextInputType.number,
+      keyboardType: isInteger
+          ? TextInputType.number
+          : const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon),
+        prefixIcon: Icon(icon, size: 20),
         border: const OutlineInputBorder(),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       ),
+      validator: validator,
     );
   }
+
+  // ── Configuration History & Audit Trail (FR-39) ─────────────────────────────
+  Widget _buildHistorySection(ThemeData theme) {
+    return Column(
+      key: const Key('admin_config_history_section'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.history, color: FairDropColors.brandNavy),
+            const SizedBox(width: 8),
+            Text(
+              'Configuration History & Audit Trail',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: FairDropColors.brandNavy,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${_configHistory.length} records',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        if (_configHistory.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: const Text('No configuration history available.'),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _configHistory.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (ctx, index) {
+              final item = _configHistory[index];
+              final configId = item['config_id'];
+              final effectiveDate = item['effective_from']?.toString().split('T').first ?? '';
+              final reason = item['change_reason'] ?? 'N/A';
+              final author = item['created_by'] ?? 'admin';
+
+              // Determine lifecycle state: SCHEDULED vs ACTIVE vs SUPERSEDED
+              final now = DateTime.now();
+              final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+              final isScheduled = effectiveDate.compareTo(todayStr) > 0;
+              final isActive = _currentConfig != null && _currentConfig!['config_id'] == configId;
+
+              Color statusColor = Colors.grey;
+              String statusText = 'SUPERSEDED';
+
+              if (isScheduled) {
+                statusColor = Colors.indigo;
+                statusText = 'SCHEDULED';
+              } else if (isActive) {
+                statusColor = FairDropColors.brandGreen;
+                statusText = 'ACTIVE';
+              }
+
+              return Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Config #$configId',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: statusColor),
+                            ),
+                            child: Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Effective: $effectiveDate',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Reason: "$reason"',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          Text('Base: ₹${_formatValue(item['base_rate'])}', style: const TextStyle(fontSize: 11)),
+                          Text('•  Per-Km: ₹${_formatValue(item['per_km_rate'])}', style: const TextStyle(fontSize: 11)),
+                          Text('•  Wait: ${item['wait_threshold_mins']}m/₹${_formatValue(item['wait_compensation'])}', style: const TextStyle(fontSize: 11)),
+                          Text('•  Floor: ₹${_formatValue(item['min_wage_per_hour'])}/hr', style: const TextStyle(fontSize: 11)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Logged by: $author',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _DiffItem {
+  final String label;
+  final String oldValue;
+  final String newValue;
+  final bool isChanged;
+
+  _DiffItem(this.label, this.oldValue, this.newValue, this.isChanged);
 }
