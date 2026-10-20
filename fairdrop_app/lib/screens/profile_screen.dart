@@ -592,7 +592,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   icon: Icons.help_outline_rounded,
                                   title: 'Help & Grievance',
                                   subtitle: 'Direct Dispute Resolution',
-                                  onTap: () {},
+                                  onTap: () => Navigator.pushNamed(context, '/grievance'),
                                 ),
                               ],
                             ),

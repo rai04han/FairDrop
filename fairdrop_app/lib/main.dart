@@ -52,6 +52,7 @@ import 'screens/restaurant/menu_management_screen.dart'; // Screen 17 (FR-62, FR
 import 'screens/restaurant/add_edit_menu_item_screen.dart'; // Screen 18 (FR-63)
 import 'screens/restaurant/restaurant_orders_screen.dart'; // Screen 19 (FR-65, FR-66, FR-69)
 import 'screens/customer/customer_order_history_screen.dart'; // Screen 22 (FR-61)
+import 'screens/grievance_screen.dart'; // Screen 24 (FR-50)
 import 'services/core_api_service.dart';
 
 // ============================================================================
@@ -125,6 +126,7 @@ class FairDropApp extends StatelessWidget {
         '/restaurant/menu/add':          (context) => const AddEditMenuItemScreen(),
         '/restaurant/orders':            (context) => const RestaurantOrdersScreen(),
         '/rider-signup':                 (context) => const RiderSignupScreen(),
+        '/grievance':                    (context) => const GrievanceScreen(),
       },
     );
   }

@@ -468,4 +468,47 @@ class CoreApiService {
     if (response.statusCode == 200) return data;
     throw _handleError(response.statusCode, data);
   }
+
+  // ── Grievance & Feedback (FR-50) ──────────────────────────────────────────
+
+  /// POST /api/grievances — submits grievance/feedback item (FR-50)
+  static Future<Map<String, dynamic>> submitGrievance({
+    required String category,
+    String? orderId,
+    required String subject,
+    required String description,
+  }) async {
+    final headers = await _authHeaders();
+    final body = <String, dynamic>{
+      'category': category,
+      'subject': subject,
+      'description': description,
+    };
+    if (orderId != null && orderId.trim().isNotEmpty) {
+      body['order_id'] = orderId.trim();
+    }
+
+    final response = await _withTimeout(http.post(
+      Uri.parse('$_baseUrl/api/grievances'),
+      headers: headers,
+      body: jsonEncode(body),
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200 || response.statusCode == 201) return data;
+    throw _handleError(response.statusCode, data);
+  }
+
+  /// GET /api/grievances — fetches user's submitted grievances
+  static Future<Map<String, dynamic>> getGrievances() async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.get(
+      Uri.parse('$_baseUrl/api/grievances'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
 }
