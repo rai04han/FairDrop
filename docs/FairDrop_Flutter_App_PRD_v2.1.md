@@ -140,7 +140,7 @@ Onboarding is P1 but carries two Fairwork principles. Build it before Profile.
 
 ### 5.5 Delivery Summary (P0)
 
-- FR-21. Line-by-line breakdown from the pay response: `base_rate`, `distance_pay`, `surge_bonus`, `wait_compensation`, `total_delivery_pay`, `floor_topup`, `hourly_earnings_so_far`. The screen displays the result passed from Active Delivery; it is not a manual calculator.
+- FR-21. Line-by-line breakdown from the pay response (6-line delivery ledger): `base_rate`, `distance_pay`, `surge_bonus`, `wait_compensation`, `total_delivery_pay`, `hourly_earnings_so_far`. The per-delivery ledger contains 6 lines; statutory minimum wage floor top-up is evaluated independently across cumulative engaged time blocks (FR-32) and is not an itemized delivery deduction or addition. The screen displays the result passed from Active Delivery; it is not a manual calculator.
 - FR-22. Zero-value lines are shown as ₹0.00 with a one-line reason (for example "No surge on this order"), not hidden.
 - FR-23. All money is formatted with ₹ and two decimals.
 - FR-24. If the delivery completed but the pay call failed, shows "Pay calculation pending" with Retry (calls the backend retry endpoint). It never shows a fabricated total.
@@ -155,9 +155,9 @@ Onboarding is P1 but carries two Fairwork principles. Build it before Profile.
 
 ### 5.7 Rider Dashboard (P0)
 
-- FR-30. Today's summary: deliveries, total earned, active hours, hourly earnings.
-- FR-31. Per-delivery list. Each row expands to the same breakdown as FR-21.
-- FR-32. Minimum wage floor status: hourly earnings against the floor value (from config), and the day's top-up total.
+- FR-30. Today's summary: deliveries, total earned, active hours, hourly earnings. All hourly figures use engaged hours (order assigned/accepted to delivered; idle time excluded). Shows "—" when engaged time is 0.
+- FR-31. Per-delivery list. Each row expands to the same 6-line breakdown as FR-21 (base rate, distance pay, surge bonus, wait compensation, total delivery pay, effective hourly rate so far).
+- FR-32. Statutory minimum wage floor status: evaluated strictly per completed 60-minute block of cumulative engaged time (order assigned/accepted to delivered; idle online time excluded). A delivery belongs to the block in which it ends on the cumulative engaged timeline. Top-up for a block = max(0, floor − delivery pay in that block). Blocks are evaluated independently without offset from previous blocks. Leftover engaged minutes carry over to subsequent orders without pro-rata at shift end. Completed hourly top-ups appear on Home and Dashboard summary metrics, never inside individual delivery ledgers.
 - FR-33. Refresh is pull-to-refresh plus automatic refresh when returning from Delivery Summary.
 
 ### 5.8 Analytics (P0)
