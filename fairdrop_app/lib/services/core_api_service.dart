@@ -453,4 +453,19 @@ class CoreApiService {
     if (response.statusCode == 200) return data;
     throw _handleError(response.statusCode, data);
   }
+
+  // ── Onboarding & Safety Checklist (FR-46) ─────────────────────────────────
+
+  /// POST /api/rider/checklist — acknowledges safety and Fairwork checklist on server (FR-46)
+  static Future<Map<String, dynamic>> acknowledgeChecklist() async {
+    final headers = await _authHeaders();
+    final response = await _withTimeout(http.post(
+      Uri.parse('$_baseUrl/api/rider/checklist'),
+      headers: headers,
+    ));
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode == 200) return data;
+    throw _handleError(response.statusCode, data);
+  }
 }

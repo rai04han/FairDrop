@@ -1,43 +1,91 @@
 // ============================================================================
-// FairDrop — Onboarding Screen
+// FairDrop — Onboarding Screen (Screen 21)
 // Based on Stitch Design Project #1184075210986276795 (Page 1 of 4, etc.)
 // ============================================================================
 // FR-46: 4-slide onboarding explaining pay transparency, statutory floor,
-// 7-day notice commitment, and required safety/dignity checklist.
+// 7-day notice commitment, and required safety/dignity checklist with server
+// synchronization (rider_profile.safety_checklist_acknowledged: true).
+// Fairwork Principles: Fair Contracts P6, Fair Conditions P3, Fair Pay P1
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/theme.dart';
+import '../services/core_api_service.dart';
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  final int initialPage;
+  final Map<String, bool>? initialChecklist;
+  final Future<Map<String, dynamic>> Function()? onAcknowledge;
+  final VoidCallback? onComplete;
+
+  const OnboardingScreen({
+    super.key,
+    this.initialPage = 0,
+    this.initialChecklist,
+    this.onAcknowledge,
+    this.onComplete,
+  });
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _pageController = PageController();
-  int _currentPage = 0;
+  late final PageController _pageController;
+  late int _currentPage;
+  bool _isSubmitting = false;
 
-  final Map<String, bool> _checklist = {
-    'I have read the FairDrop upfront pay formula policy': false,
-    'I understand rate card changes require 7 days advance notice': false,
-    'My vehicle is roadworthy, insured, and has valid PUC': false,
-    'I hold a valid two-wheeler driving licence': false,
-    'I will wear my helmet and obey traffic rules at all times': false,
-    'I understand I can decline any order with zero penalty': false,
-  };
+  late final Map<String, bool> _checklist;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = widget.initialPage;
+    _pageController = PageController(initialPage: widget.initialPage);
+    _checklist = widget.initialChecklist != null
+        ? Map<String, bool>.from(widget.initialChecklist!)
+        : {
+            'I have read the FairDrop upfront pay formula policy': false,
+            'I understand rate card changes require 7 days advance notice': false,
+            'My vehicle is roadworthy, insured, and has valid PUC': false,
+            'I hold a valid two-wheeler driving licence': false,
+            'I will wear my helmet and obey traffic rules at all times': false,
+            'I understand I can decline any order with zero penalty': false,
+          };
+  }
 
   bool get _allChecked => _checklist.values.every((v) => v);
 
+  // ── Complete Onboarding & Sync with Backend (FR-46) ────────────────────────
   Future<void> _completeOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('onboarding_complete', true);
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, '/rider-home');
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      if (widget.onAcknowledge != null) {
+        await widget.onAcknowledge!();
+      } else {
+        await CoreApiService.acknowledgeChecklist();
+      }
+    } catch (e) {
+      // In case server is temporarily unreachable, log warning but persist locally
+      // so the rider can still proceed without being permanently blocked
+      debugPrint('Warning: Server safety checklist sync failed: $e');
+    } finally {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('onboarding_complete', true);
+
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        if (widget.onComplete != null) {
+          widget.onComplete!();
+        } else {
+          Navigator.pushReplacementNamed(context, '/rider-home');
+        }
+      }
     }
   }
 
@@ -80,6 +128,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   const FairDropLogo(fontSize: 26),
                   if (_currentPage < 3)
                     TextButton(
+                      key: const Key('onboarding_skip_button'),
                       onPressed: _skipToFinal,
                       child: Text(
                         'Skip',
@@ -156,6 +205,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
                   if (_currentPage < 3) ...[
                     FilledButton(
+                      key: const Key('onboarding_next_button'),
                       onPressed: _nextPage,
                       style: FilledButton.styleFrom(
                         backgroundColor: FairDropColors.brandGreen,
@@ -175,7 +225,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                   ] else ...[
                     FilledButton(
-                      onPressed: _allChecked ? _completeOnboarding : null,
+                      key: const Key('onboarding_complete_button'),
+                      onPressed: (_allChecked && !_isSubmitting) ? _completeOnboarding : null,
                       style: FilledButton.styleFrom(
                         backgroundColor: FairDropColors.brandGreen,
                         disabledBackgroundColor: const Color(0xFFE2E8F0),
@@ -183,14 +234,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         shape: const StadiumBorder(),
                         elevation: _allChecked ? 3 : 0,
                       ),
-                      child: Text(
-                        'Start Riding With Dignity',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: _allChecked ? Colors.white : const Color(0xFF94A3B8),
-                        ),
-                      ),
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              'Start Riding With Dignity',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: _allChecked ? Colors.white : const Color(0xFF94A3B8),
+                              ),
+                            ),
                     ),
                   ],
                 ],
@@ -269,7 +329,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildChecklistSlide() {
+    final checklistKeys = _checklist.keys.toList();
+
     return SingleChildScrollView(
+      key: const Key('onboarding_checklist_scroll_view'),
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,35 +372,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          ..._checklist.keys.map((item) {
+          ...List.generate(checklistKeys.length, (idx) {
+            final item = checklistKeys[idx];
             final isChecked = _checklist[item] ?? false;
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                color: isChecked ? FairDropColors.mintBg : Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isChecked ? FairDropColors.brandGreen : const Color(0xFFE2E8F0),
                   width: 1.5,
                 ),
               ),
-              child: CheckboxListTile(
-                value: isChecked,
-                activeColor: FairDropColors.brandGreen,
-                checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                title: Text(
-                  item,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: FairDropColors.brandNavy,
+              child: Material(
+                color: isChecked ? FairDropColors.mintBg : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                child: CheckboxListTile(
+                  key: Key('checklist_item_$idx'),
+                  value: isChecked,
+                  activeColor: FairDropColors.brandGreen,
+                  checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  title: Text(
+                    item,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: FairDropColors.brandNavy,
+                    ),
                   ),
+                  onChanged: (val) {
+                    setState(() => _checklist[item] = val ?? false);
+                  },
                 ),
-                onChanged: (val) {
-                  setState(() => _checklist[item] = val ?? false);
-                },
               ),
             );
           }),
