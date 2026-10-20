@@ -74,12 +74,12 @@
 
 | Check | Result | Exact Summary Line |
 |---|---|---|
-| **core-service: npm test** | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 32549.4627` |
-| **pay-service: npm test** | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 3245.9231` |
-| **root: npm run seed; npm run smoke** | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (14.89s)` |
-| **app: flutter analyze** | **PASS** | `No issues found! (ran in 24.5s)` |
-| **app: flutter test** | **PASS** | `00:46 +103: All tests passed!` |
-| **app: flutter build web** | **PASS** | `√ Built build\web (ran in 202.4s)` |
+| **core-service: npm test** | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 46181.5476` |
+| **pay-service: npm test** | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 14157.9526` |
+| **root: npm run seed; npm run smoke** | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (11.01s)` |
+| **app: flutter analyze** | **PASS** | `No issues found! (ran in 7.4s)` |
+| **app: flutter test** | **PASS** | `00:40 +120: All tests passed!` |
+| **app: flutter build web** | **PASS** | `√ Built build\web (140.6s)` |
 
 ---
 
