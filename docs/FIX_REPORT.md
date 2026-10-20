@@ -1,41 +1,65 @@
-# FairDrop Defects Fix Report (Part 1: Demo Blockers)
+# FairDrop Defects Fix Report (Complete: Part 1 & Part 2)
 
 **Date:** October 20, 2026  
 **Audited Against:** `docs/FairDrop_Flutter_App_PRD_v2.1.md` and `docs/AUDIT_REPORT.md`  
 **Base Tag:** `pre-audit` (`06711b4`)  
-**Head Commit:** `85d118d`  
+**Head Commit:** `064b38f` (before report update)  
 
 ---
 
 ## 1. Fix Summary Matrix
 
-| Fix | Description | Status | Files Modified | Evidence |
-|---|---|---|---|---|
-| **F1** | Customer fees removed; total = item subtotal; mock payment simplified to single Place Order button (FR-59, D4) | **FIXED** | `fairdrop_app/lib/services/cart_service.dart`<br>`fairdrop_app/lib/screens/customer/cart_screen.dart`<br>`fairdrop_app/lib/screens/customer/mock_payment_screen.dart`<br>`fairdrop_app/test/customer_flow_test.dart` | `flutter analyze`: 0 issues; `flutter test`: 99/99 passed; Commit `2364a58` |
-| **F2** | Idempotent duplicate `delivered` status calls & rider ownership check (FR-74) | **FIXED** | `core-service/src/modules/orders/order.controller.js`<br>`core-service/tests/orders.test.js` | `core-service npm test`: 73/73 passed; `npm run smoke`: 14/14 passed; Commit `09c2533` |
-| **F3** | Register both `/health` and `/api/health` endpoints on pay-service | **FIXED** | `pay-service/src/server.js` | `curl.exe http://localhost:3001/health`: HTTP 200 OK; `curl.exe http://localhost:3001/api/health`: HTTP 200 OK; `pay-service npm test`: 23/23 passed; Commit `ca1bb67` |
-| **F4** | Fix timezone offset bug in 7-day advance notice rule date comparison and storage | **FIXED** | `pay-service/src/routes/adminRoutes.js`<br>`pay-service/tests/payConfig.test.js` | `pay-service npm test`: 24/24 passed (today+6 -> 400, today+7 -> 200, today+8 -> 200 stored/returned match); `npm run smoke`: 14/14 passed; Commit `b04b419` |
-| **F5** | Bind state wage floor to pay config `min_wage_per_hour` (Kerala baseline ₹70/hr); remove 150 fallback; hide text if unconfigured | **FIXED** | `fairdrop_app/lib/screens/rider_home_screen.dart` | `flutter analyze`: 0 issues; `flutter test`: 99/99 passed; Commit `8916103` |
-| **F6** | Update wait compensation label to indicate flat bonus instead of per-minute rate | **FIXED** | `fairdrop_app/lib/screens/order_acceptance_screen.dart` | `flutter analyze`: 0 issues; `flutter test`: 99/99 passed; Commit `85d118d` |
+| Fix ID | Description | Status | Commit | Files Modified | Evidence & Verification |
+|---|---|---|---|---|---|
+| **F1** | Remove customer fees (delivery, platform, GST); total = item subtotal; simplify mock payment to single Place Order button (FR-59, D4) | **FIXED** | `2364a58` | `fairdrop_app/lib/services/cart_service.dart`<br>`fairdrop_app/lib/screens/customer/cart_screen.dart`<br>`fairdrop_app/lib/screens/customer/mock_payment_screen.dart`<br>`fairdrop_app/test/customer_flow_test.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 99/99 passed;<br>Cart fee lines removed, subtotal ₹360 matches total ₹360 |
+| **F2** | Idempotent duplicate `delivered` status calls (HTTP 200) & rider ownership check (HTTP 403) (FR-74) | **FIXED** | `09c2533` | `core-service/src/modules/orders/order.controller.js`<br>`core-service/tests/orders.test.js` | `core-service npm test`: 73/73 passed;<br>`npm run smoke`: 14/14 passed |
+| **F3** | Register both `/health` and `/api/health` endpoints on pay-service | **FIXED** | `ca1bb67` | `pay-service/src/server.js` | `curl.exe http://localhost:3001/health`: HTTP 200 OK;<br>`curl.exe http://localhost:3001/api/health`: HTTP 200 OK;<br>`pay-service npm test`: 23/23 passed |
+| **F4** | Fix timezone offset bug in 7-day advance notice rule date comparison and storage | **FIXED** | `b04b419` | `pay-service/src/routes/adminRoutes.js`<br>`pay-service/tests/payConfig.test.js` | `pay-service npm test`: 24/24 passed (today+6 -> 400, today+7 -> 200, today+8 -> 200 stored/returned match);<br>`npm run smoke`: 14/14 passed |
+| **F5** | Bind state wage floor to pay config `min_wage_per_hour` (Kerala baseline ₹70/hr); remove hardcoded ₹150 fallback; hide text if unconfigured | **FIXED** | `8916103` | `fairdrop_app/lib/screens/rider_home_screen.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 99/99 passed |
+| **F6** | Update wait compensation label to indicate flat bonus instead of per-minute rate (`+₹<amount> flat bonus if restaurant wait exceeds <threshold> min`) | **FIXED** | `85d118d` | `fairdrop_app/lib/screens/order_acceptance_screen.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 99/99 passed |
+| **F7** | Remove fallback pay constants on order acceptance screen; gate accept button on `_hasValidPayConfig`; add retry button on error banner | **FIXED** | `9f2c014` | `fairdrop_app/lib/screens/order_acceptance_screen.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 99/99 passed |
+| **F8** | Remove fallback mock data on network error in rider dashboard & analytics screens; display error banner with Retry; guard division-by-zero for riders with 0 deliveries | **FIXED** | `c872c08` | `fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 103/103 passed (4 new widget tests passing) |
+| **F9** | Remove plaintext password in docs/Application_Guide.md; fix `items_total` log string in e2e-smoke.js; align docs/DEMO_RUNBOOK.md routes and fees | **FIXED** | `064b38f` | `docs/Application_Guide.md`<br>`scripts/e2e-smoke.js`<br>`docs/DEMO_RUNBOOK.md` | `npm run seed; npm run smoke`: 14/14 steps passed; `items_total` logged as ₹360; documentation aligned with PRD v2.1 |
 
 ---
 
-## 2. Part 1 Full Gate Verification Results
+## 2. Tests Added and Updated
+
+1. **`fairdrop_app/test/customer_flow_test.dart` (F1):**
+   - Updated cart calculations tests to assert customer delivery fee is ₹0, platform fee is ₹0, GST is ₹0, and total equals items subtotal per PRD FR-59 (asserted old wrong fee behaviour).
+2. **`core-service/tests/orders.test.js` (F2):**
+   - Added test: `PUT /api/orders/:id/status should return 200 idempotent for duplicate delivered status`.
+   - Added test: `PUT /api/orders/:id/status should reject delivery update from unauthorized rider (403)`.
+3. **`pay-service/tests/payConfig.test.js` (F4):**
+   - Added test: `POST /api/admin/pay-config should accept effective_from date 8 days ahead (>= 7 days in local time) and return stored date`.
+4. **`fairdrop_app/test/analytics_dashboard_test.dart` (F8):**
+   - Added widget test: `RiderDashboardScreen shows error banner with retry button on failure without mock numbers`.
+   - Added widget test: `AnalyticsScreen shows error banner with retry button on failure without mock numbers`.
+   - Added widget test: `RiderDashboardScreen displays clean zeros for new rider with 0 deliveries`.
+   - Added widget test: `AnalyticsScreen displays clean zeros for new rider with 0 deliveries`.
+
+---
+
+## 3. Full Gate Verification Results
 
 | Check | Result | Exact Summary Line |
 |---|---|---|
-| **core-service: npm test** | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 39557.0779` |
-| **pay-service: npm test** | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 4194.1448` |
-| **root: npm run seed && npm run smoke** | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (16.09s)` |
-| **app: flutter analyze** | **PASS** | `No issues found! (ran in 29.0s)` |
-| **app: flutter test** | **PASS** | `00:44 +99: All tests passed!` |
-| **app: flutter build web** | **PASS** | `√ Built build\web` |
+| **core-service: npm test** | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 32549.4627` |
+| **pay-service: npm test** | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 3245.9231` |
+| **root: npm run seed; npm run smoke** | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (14.89s)` |
+| **app: flutter analyze** | **PASS** | `No issues found! (ran in 24.5s)` |
+| **app: flutter test** | **PASS** | `00:46 +103: All tests passed!` |
+| **app: flutter build web** | **PASS** | `√ Built build\web (ran in 202.4s)` |
 
 ---
 
-## 3. Git Commit History (`pre-audit..HEAD`)
+## 4. Git Commit History (`pre-audit..HEAD`)
 
 ```text
+064b38f fix(docs): align demo runbook and documentation with PRD and actual code (AUDIT-F9)
+c872c08 fix(rider): show error banner with retry instead of sample data and handle zero deliveries (AUDIT-F8)
+9f2c014 fix(rider): remove acceptance constants fallback and add retry on error (AUDIT-F7)
+7b02b8f docs: add audit report and part 1 fix report
 85d118d fix(rider): label wait compensation as flat bonus rather than per-minute rate (AUDIT-F6)
 8916103 fix(rider): bind state wage floor to pay config and remove hardcoded 150 fallback (AUDIT-F5)
 b04b419 fix(pay-service): fix timezone bug in 7-day rule date comparison and storage (AUDIT-F4)
