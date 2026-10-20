@@ -722,7 +722,7 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  '+${formatCurrency(_waitCompensation)}/min if restaurant wait exceeds $_waitThresholdMins min (credited on delivery)',
+                                  '+${formatCurrency(_waitCompensation)} flat bonus if restaurant wait exceeds $_waitThresholdMins min (credited on delivery)',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
