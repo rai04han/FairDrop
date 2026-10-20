@@ -23,71 +23,55 @@ class MenuManagementScreen extends StatefulWidget {
 }
 
 class _MenuManagementScreenState extends State<MenuManagementScreen> {
-  List<MenuItem> _items = [];
-  bool _isLoading = true;
-  String? _errorMessage;
-
   // Fallback demo menu items for Hotel Arun (PRD §10.1 & seed.js)
   static final List<MenuItem> _fallbackItems = [
     MenuItem(
       id: 'item-101',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Kerala Porotta',
-      price: 25.0,
-      prepTimeSeconds: 600,
+      restaurantId: '6ad6fe379766b27694ce0184',
+      name: 'Parotta',
+      price: 15.0,
+      prepTimeSeconds: 20,
       isAvailable: true,
     ),
     MenuItem(
       id: 'item-102',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Nadan Chicken Curry',
-      price: 180.0,
-      prepTimeSeconds: 900,
+      restaurantId: '6ad6fe379766b27694ce0184',
+      name: 'Fish Curry Meal',
+      price: 120.0,
+      prepTimeSeconds: 45,
       isAvailable: true,
     ),
     MenuItem(
       id: 'item-103',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Appam with Vegetable Stew',
-      price: 120.0,
-      prepTimeSeconds: 720,
+      restaurantId: '6ad6fe379766b27694ce0184',
+      name: 'Chicken Biryani',
+      price: 180.0,
+      prepTimeSeconds: 40,
       isAvailable: true,
     ),
-    MenuItem(
-      id: 'item-104',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Karimeen Pollichathu',
-      price: 350.0,
-      prepTimeSeconds: 1500,
-      isAvailable: false,
-    ),
   ];
+
+  late List<MenuItem> _items = List.from(widget.initialItems ?? _fallbackItems);
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    if (widget.initialItems != null) {
-      _items = List.from(widget.initialItems!);
-      _isLoading = false;
-    } else {
+    if (widget.initialItems == null) {
       _loadMenu();
     }
   }
 
   Future<void> _loadMenu() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
     try {
       final res = await CoreApiService.getMyRestaurantMenu().timeout(
-        const Duration(seconds: 1),
-        onTimeout: () => {},
+        const Duration(seconds: 2),
+        onTimeout: () => <String, dynamic>{},
       );
 
       final list = res['items'] as List<dynamic>?;
-      if (list != null && mounted) {
+      if (list != null && list.isNotEmpty && mounted) {
         setState(() {
           _items = list.map((json) => MenuItem.fromJson(json as Map<String, dynamic>)).toList();
           _isLoading = false;
@@ -95,10 +79,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         return;
       }
     } catch (_) {
-      // Fallback in test/offline environment
+      // In offline / unauthenticated state, preserve existing items
     }
 
-    if (mounted) {
+    if (mounted && _items.isEmpty) {
       setState(() {
         _items = List.from(_fallbackItems);
         _isLoading = false;
@@ -223,38 +207,43 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     children: [
                       // ── Header Summary Banner ──────────────────────────────
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         color: Colors.white,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'KITCHEN DISHES (${_items.length})',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    color: FairDropColors.slateMuted,
-                                    letterSpacing: 0.5,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'KITCHEN DISHES (${_items.length})',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: FairDropColors.slateMuted,
+                                      letterSpacing: 0.5,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${_items.where((i) => i.isAvailable).length} Available • ${_items.where((i) => !i.isAvailable).length} Off Menu',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: FairDropColors.brandNavy,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_items.where((i) => i.isAvailable).length} Available • ${_items.where((i) => !i.isAvailable).length} Off Menu',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: FairDropColors.brandNavy,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             FilledButton.icon(
                               key: const Key('add_menu_item_header_button'),
                               onPressed: () => _openAddEditScreen(),
-                              icon: const Icon(Icons.add, size: 18),
+                              icon: const Icon(Icons.add, size: 16),
                               label: Text(
                                 'ADD ITEM',
                                 style: GoogleFonts.plusJakartaSans(
@@ -265,7 +254,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               style: FilledButton.styleFrom(
                                 backgroundColor: FairDropColors.brandGreen,
                                 shape: const StadiumBorder(),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               ),
                             ),
                           ],
@@ -348,7 +337,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                   ),
                                                 ),
                                                 const SizedBox(height: 4),
-                                                Row(
+                                                Wrap(
+                                                  spacing: 8,
+                                                  runSpacing: 4,
+                                                  crossAxisAlignment: WrapCrossAlignment.center,
                                                   children: [
                                                     Text(
                                                       formatCurrency(item.price),
@@ -360,7 +352,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                             : FairDropColors.slateMuted,
                                                       ),
                                                     ),
-                                                    const SizedBox(width: 10),
                                                     Container(
                                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                       decoration: BoxDecoration(
@@ -368,6 +359,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                         borderRadius: BorderRadius.circular(6),
                                                       ),
                                                       child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
                                                         children: [
                                                           const Icon(Icons.timer_outlined, size: 12, color: FairDropColors.slateMuted),
                                                           const SizedBox(width: 4),
