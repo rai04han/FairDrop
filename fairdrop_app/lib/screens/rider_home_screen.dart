@@ -93,13 +93,13 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         } else {
           // Offer window elapsed
           _countdownTimer?.cancel();
-          _incomingOrder = null;
         }
       });
     });
   }
 
   void _startPolling() {
+    _pollTimer?.cancel();
     _pollTimer = Timer.periodic(AppConfig.orderPollingInterval, (_) {
       if (_isOnline) _pollForOrder();
     });
@@ -117,8 +117,17 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _incomingOrder = order;
 
           if (order != null) {
-            if (prevId != newId || _countdownTimer == null || !_countdownTimer!.isActive) {
-              _startCountdown(order);
+            final status = (order['status'] as String? ?? '').toLowerCase();
+            final ack = (order['rider_ack'] as String? ?? '').toLowerCase();
+            final isPendingOffer = status == 'accepted' && ack == 'pending';
+
+            if (isPendingOffer) {
+              if (prevId != newId || _countdownTimer == null || !_countdownTimer!.isActive) {
+                _startCountdown(order);
+              }
+            } else {
+              _countdownTimer?.cancel();
+              _secondsLeft = 0;
             }
           } else {
             _countdownTimer?.cancel();
@@ -139,8 +148,16 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       final configData = await ApiService.getPayConfig();
       final config = configData['config'] as Map<String, dynamic>? ?? {};
 
+      final serverIsOnline = (stats['is_online'] as bool?) ?? false;
+      if (!serverIsOnline && _isOnline) {
+        try {
+          await CoreApiService.setRiderStatus(isOnline: true);
+        } catch (_) {}
+      }
+
       if (mounted) {
         setState(() {
+          _isOnline = (stats['is_online'] as bool?) ?? _isOnline;
           _todayEarnings = (stats['total_earnings_today'] as num?)?.toDouble() ?? 0.0;
           _activeHoursToday = (stats['active_hours_today'] as num?)?.toDouble() ?? 0.0;
           _deliveriesToday = (stats['deliveries_today'] as num?)?.toInt() ?? 0;
@@ -155,6 +172,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _surgeBonus = double.tryParse(config['surge_bonus']?.toString() ?? '') ?? 15.0;
         });
       }
+      // Immediately check for any active or newly allocated order
+      _pollForOrder();
     } catch (_) {
       // Keep real values (zeros for new rider)
     }
@@ -208,7 +227,11 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       context,
       '/order-acceptance',
       arguments: order,
-    );
+    ).then((_) {
+      _pollForOrder();
+      _loadStats();
+      _startPolling();
+    });
   }
 
   @override
@@ -333,9 +356,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                       _buildCurrentShiftPayCard(),
                       const SizedBox(height: 16),
 
-                      // 2. Incoming Order Alert Card (Urgent, High-Contrast Dispatch Card)
+                      // 2. Incoming Order Alert Card or Active Delivery Banner
                       if (_isOnline && _incomingOrder != null) ...[
-                        _buildIncomingOrderCard(),
+                        _buildOrderDispatchWidget(),
                         const SizedBox(height: 16),
                       ],
 
@@ -378,64 +401,78 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       ),
       child: Row(
         children: [
-          // Brand & Zone Badge
+          // Brand & Zone Badge (Clickable to open Zone Map)
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const FairDropLogo(fontSize: 18),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: FairDropColors.brandGreen.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          'KL-02',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: FairDropColors.brandGreen,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Row(
+            child: InkWell(
+              onTap: () => Navigator.pushNamed(context, '/zone-map'),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _isOnline ? FairDropColors.brandGreen : FairDropColors.slateMuted,
-                        shape: BoxShape.circle,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const FairDropLogo(fontSize: 18),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: FairDropColors.brandGreen.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.map_rounded, size: 10, color: FairDropColors.brandGreen),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'KL-02',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: FairDropColors.brandGreen,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 5),
-                    Flexible(
-                      child: Text(
-                        _currentZone,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: FairDropColors.slateMuted,
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: _isOnline ? FairDropColors.brandGreen : FairDropColors.slateMuted,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            '$_currentZone • View Map ↗',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: FairDropColors.slateMuted,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -846,6 +883,186 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               fontSize: 15,
               fontWeight: FontWeight.w800,
               color: isPositive ? FairDropColors.brandGreen : FairDropColors.brandNavy,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 2. Order Dispatch Widget (New Offer or Active In-Progress Delivery) ───
+  Widget _buildOrderDispatchWidget() {
+    final order = _incomingOrder;
+    if (order == null) return const SizedBox.shrink();
+
+    final status = (order['status'] as String? ?? '').toLowerCase();
+
+    // If active delivery in progress (assigned, arrived, picked_up)
+    if (status == 'assigned' || status == 'arrived' || status == 'picked_up') {
+      return _buildActiveDeliveryBanner(order);
+    }
+
+    // Pending offer dispatch card
+    return _buildIncomingOrderCard();
+  }
+
+  Widget _buildActiveDeliveryBanner(Map<String, dynamic> order) {
+    final orderId = order['order_id'] ?? order['id'] ?? 'FD-LIVE';
+    final status = (order['status'] as String? ?? '').toLowerCase();
+    final distanceKm = (order['distance_km'] as num?)?.toDouble() ?? 0.0;
+
+    String statusLabel = 'Heading to Restaurant';
+    Color statusColor = FairDropColors.brandNavy;
+    IconData statusIcon = Icons.two_wheeler_rounded;
+
+    if (status == 'arrived') {
+      statusLabel = 'At Kitchen / Waiting';
+      statusColor = FairDropColors.brandOrange;
+      statusIcon = Icons.storefront_rounded;
+    } else if (status == 'picked_up') {
+      statusLabel = 'Out for Delivery';
+      statusColor = FairDropColors.brandGreen;
+      statusIcon = Icons.delivery_dining_rounded;
+    }
+
+    final pickupAddress = _extractAddress(
+      order['restaurant_address'],
+      fallback: _extractAddress(
+        order['pickup_address'],
+        fallback: (order['restaurant_name'] as String?) ?? 'Restaurant Pickup',
+      ),
+    );
+    final dropAddress = _extractAddress(
+      order['delivery_address'],
+      fallback: (order['delivery_location'] as String?) ?? 'Customer Delivery Point',
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: FairDropColors.brandGreen.withValues(alpha: 0.6), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: FairDropColors.brandGreen.withValues(alpha: 0.12),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: FairDropColors.brandGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: FairDropColors.brandGreen,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'ACTIVE DELIVERY IN PROGRESS',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: FairDropColors.brandGreen,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(statusIcon, size: 14, color: statusColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      statusLabel,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: statusColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Order #$orderId',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: FairDropColors.brandNavy,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.location_on_outlined, size: 14, color: FairDropColors.slateMuted),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '$pickupAddress → $dropAddress ($distanceKm km)',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: FairDropColors.slateMuted,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pushNamed(
+                context,
+                '/active-delivery',
+                arguments: order,
+              ).then((_) {
+                _pollForOrder();
+                _loadStats();
+              });
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: FairDropColors.brandGreen,
+              minimumSize: const Size.fromHeight(50),
+              shape: const StadiumBorder(),
+              elevation: 2,
+            ),
+            icon: const Icon(Icons.navigation_rounded, size: 18),
+            label: Text(
+              'Resume Delivery & Update Status',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -1438,6 +1655,27 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 14),
+
+          // Zone Map Quick Action
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pushNamed(context, '/zone-map'),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: FairDropColors.mintBorder),
+              backgroundColor: FairDropColors.mintBg.withValues(alpha: 0.5),
+              minimumSize: const Size.fromHeight(42),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.map_rounded, size: 16, color: FairDropColors.brandNavy),
+            label: Text(
+              'View Kollam Zone Map & Boundaries',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: FairDropColors.brandNavy,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1482,7 +1720,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               // Already on home
               break;
             case 1:
-              Navigator.pushNamed(context, '/orders');
+              Navigator.pushNamed(context, '/zone-map');
               break;
             case 2:
               Navigator.pushNamed(context, '/pay-breakdown');
@@ -1498,8 +1736,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.two_wheeler_rounded),
-            label: 'Orders',
+            icon: Icon(Icons.map_rounded),
+            label: 'Zone Map',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_balance_wallet_rounded),

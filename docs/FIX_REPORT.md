@@ -149,3 +149,39 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 09c2533 fix(orders): make duplicate delivered calls idempotent and enforce rider ownership (AUDIT-F2)
 2364a58 fix(customer): remove customer fees and simplify mock payment (AUDIT-F1)
 ```
+
+---
+
+## Live Rehearsal Fix: Rider Order Dispatch & Zone Map Accessibility
+
+### Root Causes
+1. **Order Allocation Desync**:
+   - `_RiderHomeScreenState` in Flutter hardcoded `_isOnline = true` in Dart state while the database defaulted to `rider_profile.is_online = false`. When the user logged in, the screen displayed "• Online", but MongoDB treated the rider as offline. Orders placed by customers received `allocation: 'no_rider_available'` with `rider_id = null`.
+   - When an unallocated queued order was waiting, `GET /api/orders/rider/active` only checked `{ rider_id: req.user.id }` and never evaluated unallocated orders for idle online riders.
+   - When orders in progress were in status `assigned`, `arrived`, or `picked_up`, `RiderHomeScreen` displayed a 45-second countdown timer that vanished after 45s, leaving the rider unable to resume and complete the delivery, keeping them forever busy.
+2. **Customer "Orders" Button in Rider Bottom Nav**:
+   - `BottomNavigationBar` in `RiderHomeScreen` included an `Orders` button targeting `/orders` (the customer ordering screen).
+3. **Zone Map Inaccessible After Rider Login**:
+   - `/zone-map` was not directly accessible from the bottom navigation or the top header badge.
+
+### Fixes Applied
+1. **`fairdrop_app/lib/screens/rider_home_screen.dart`**:
+   - In `_loadStats()`, synchronized `_isOnline` with `stats['is_online']` and automatically activated `CoreApiService.setRiderStatus(isOnline: true)` upon entering the active shift.
+   - Replaced customer `Orders` item in `BottomNavigationBar` with `Zone Map` (`Icons.map_rounded`, route `/zone-map`).
+   - Made the top header Zone Badge (`KL-02` and `_currentZone`) clickable to open `/zone-map` on tap.
+   - Added a "View Kollam Zone Map & Boundaries" button in `_buildFairnessGovernanceCard()`.
+   - Added `_buildOrderDispatchWidget()` with `_buildActiveDeliveryBanner()` to display active deliveries in progress (`assigned`, `arrived`, `picked_up`) with a "Resume Delivery & Update Status" button leading to `/active-delivery`.
+2. **`core-service/src/modules/orders/order.controller.js`**:
+   - In `getRiderActiveOrder`: If an online rider has no active order, automatically evaluates pending unallocated orders and allocates queued orders to the eligible rider (FR-60, FR-72, D6).
+   - In `updateOrderStatus`: When `new_status === 'delivered'`, automatically evaluates and allocates queued pending orders to available riders.
+
+### Verification Gate Results
+| Check | Result | Exact Summary Line |
+|---|---|---|
+| `core-service: npm test` | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ duration_ms 57959.6732` |
+| `pay-service: npm test` | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ duration_ms 25014.7686` |
+| `Master Seed & Smoke Test` | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (10.34s)` |
+| `fairdrop_app: flutter analyze` | **PASS** | `No issues found! (ran in 42.1s)` |
+| `fairdrop_app: flutter test` | **PASS** | `01:01 +121: All tests passed!` |
+| `fairdrop_app: flutter build web` | **PASS** | `√ Built build\web` |
+

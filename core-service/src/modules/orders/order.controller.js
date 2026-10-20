@@ -513,6 +513,43 @@ async function updateStatus(req, res) {
 
     await order.save();
 
+    // FR-60, D6: Allocate queued pending orders as soon as a rider completes delivery
+    if (new_status === 'delivered') {
+      try {
+        const unallocatedOrders = await Order.find({
+          rider_id: null,
+          status: { $in: ['placed', 'accepted'] },
+        }).sort({ created_at: 1 });
+
+        for (const pendingOrder of unallocatedOrders) {
+          const restZone = pendingOrder.zone_id
+            ? await Zone.findById(pendingOrder.zone_id)
+            : await findZoneForLocation(
+                pendingOrder.restaurant_address?.latitude,
+                pendingOrder.restaurant_address?.longitude
+              );
+
+          const alloc = await runAllocation(pendingOrder, restZone);
+          if (alloc.allocated) {
+            pendingOrder.rider_id = alloc.rider._id;
+            pendingOrder.rider_ack = 'pending';
+            pendingOrder.allocation = 'allocated';
+            pendingOrder.is_out_of_zone = alloc.is_out_of_zone;
+            pendingOrder.out_of_zone_distance_km = alloc.out_of_zone_distance_km;
+            pendingOrder.status = 'accepted';
+            pendingOrder.status_history.push({
+              status: 'accepted',
+              changed_at: new Date(),
+              changed_by: alloc.rider._id,
+            });
+            await pendingOrder.save();
+          }
+        }
+      } catch (allocErr) {
+        console.error('FR-60 Allocation on delivery completion error:', allocErr.message);
+      }
+    }
+
     res.json({
       success: true,
       message: `Order ${order.order_id} status updated to "${new_status}".`,
@@ -591,13 +628,52 @@ async function retryPay(req, res) {
  */
 async function getRiderActiveOrder(req, res) {
   try {
-    const order = await Order.findOne({
+    let order = await Order.findOne({
       rider_id: req.user.id,
       $or: [
         { status: 'accepted', rider_ack: 'pending' },
         { status: { $in: ['assigned', 'arrived', 'picked_up'] } },
       ],
     });
+
+    // If no order currently assigned to this rider, and this rider is online and active,
+    // check if there are pending unallocated orders waiting for a rider (FR-60, FR-72, D6)
+    if (!order) {
+      const rider = await User.findById(req.user.id);
+      if (rider && rider.rider_profile?.is_online) {
+        const unallocatedOrders = await Order.find({
+          rider_id: null,
+          status: { $in: ['placed', 'accepted'] },
+        }).sort({ created_at: 1 });
+
+        for (const pendingOrder of unallocatedOrders) {
+          const restZone = pendingOrder.zone_id
+            ? await Zone.findById(pendingOrder.zone_id)
+            : await findZoneForLocation(
+                pendingOrder.restaurant_address?.latitude,
+                pendingOrder.restaurant_address?.longitude
+              );
+
+          const alloc = await runAllocation(pendingOrder, restZone);
+          if (alloc.allocated && alloc.rider._id.toString() === req.user.id) {
+            pendingOrder.rider_id = req.user.id;
+            pendingOrder.rider_ack = 'pending';
+            pendingOrder.allocation = 'allocated';
+            pendingOrder.is_out_of_zone = alloc.is_out_of_zone;
+            pendingOrder.out_of_zone_distance_km = alloc.out_of_zone_distance_km;
+            pendingOrder.status = 'accepted';
+            pendingOrder.status_history.push({
+              status: 'accepted',
+              changed_at: new Date(),
+              changed_by: req.user.id,
+            });
+            await pendingOrder.save();
+            order = pendingOrder;
+            break;
+          }
+        }
+      }
+    }
 
     res.json({
       success: true,
