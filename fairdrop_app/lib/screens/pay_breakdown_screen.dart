@@ -31,6 +31,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
   PayResult? _payResult;
   bool _isPending = false;
   bool _isRetrying = false;
+  bool _isCached = false;
   String? _errorMessage;
 
   // Fallback defaults for developer launch without arguments
@@ -104,6 +105,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
 
     // Seeded demo fallback if pay result is null and not explicitly pending
     if (_payResult == null && !_isPending) {
+      _isCached = true;
       _payResult = PayResult(
         orderId: _orderId,
         baseRate: 15.0,
@@ -113,7 +115,10 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
         totalDeliveryPay: 32.50,
         floorTopup: 0.0,
         hourlyEarningsSoFar: 65.0,
+        isCached: true,
       );
+    } else if (_payResult != null) {
+      _isCached = _payResult!.isCached;
     }
   }
 
@@ -135,6 +140,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           _payResult = PayResult.fromJson(orderData['pay_calculation_result'] as Map<String, dynamic>);
           _isPending = false;
           _isRetrying = false;
+          _isCached = _payResult?.isCached ?? false;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -237,14 +243,18 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Delivery Completed',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: FairDropColors.brandGreen,
+              Flexible(
+                child: Text(
+                  'Delivery Completed',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: FairDropColors.brandGreen,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -562,30 +572,72 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Total Payout',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.9),
+              Flexible(
+                child: Text(
+                  'Total Payout',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _payResult!.isCached ? 'CACHED' : 'VERIFIED',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
+              const SizedBox(width: 8),
+              if (_isCached || (_payResult?.isCached ?? false))
+                InkWell(
+                  key: const Key('btn_retry_cached_pay'),
+                  onTap: _isRetrying ? null : _retryPay,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'CACHED',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.refresh_rounded, size: 12, color: Colors.white),
+                        const SizedBox(width: 2),
+                        Text(
+                          'Retry',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'VERIFIED',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -631,12 +683,15 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
             children: [
               const Icon(Icons.receipt_long_rounded, size: 20, color: FairDropColors.brandNavy),
               const SizedBox(width: 8),
-              Text(
-                'Itemized Pay Ledger',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: FairDropColors.brandNavy,
+              Expanded(
+                child: Text(
+                  'Itemized Pay Ledger',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: FairDropColors.brandNavy,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -679,7 +734,16 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           ),
           const Divider(height: 20, color: FairDropColors.mintBorder),
 
-          // 5. Floor Top-Up (FR-22: explicit zero reason)
+          // 5. Total Delivery Pay (sum of the lines above: base + distance + surge + wait)
+          _buildLedgerLine(
+            title: 'Total Delivery Pay',
+            amount: r.totalDeliveryPay,
+            subtitle: 'Base + distance + surge + wait',
+            isBold: true,
+          ),
+          const Divider(height: 20, color: FairDropColors.mintBorder),
+
+          // 6. Floor Top-Up (FR-22: explicit zero reason)
           _buildLedgerLine(
             title: 'Floor Top-Up',
             amount: r.floorTopup,
@@ -690,39 +754,33 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           ),
           const Divider(height: 20, color: FairDropColors.mintBorder),
 
-          // 6. Total Delivery Pay
-          _buildLedgerLine(
-            title: 'Total Delivery Pay',
-            amount: r.totalDeliveryPay,
-            subtitle: 'Base + distance + surge + wait',
-            isBold: true,
-          ),
-          const Divider(height: 20, color: FairDropColors.mintBorder),
-
           // 7. Effective Hourly Rate So Far
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Effective Hourly Rate So Far',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: FairDropColors.brandNavy,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Effective Hourly Rate So Far',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: FairDropColors.brandNavy,
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Based on cumulative active hours today',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
-                      color: FairDropColors.slateMuted,
+                    Text(
+                      'Based on cumulative active hours today',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        color: FairDropColors.slateMuted,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Text(
                 '${formatCurrency(r.hourlyEarningsSoFar)}/hr',
                 style: GoogleFonts.plusJakartaSans(

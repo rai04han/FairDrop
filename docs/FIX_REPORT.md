@@ -178,10 +178,48 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ### Verification Gate Results
 | Check | Result | Exact Summary Line |
 |---|---|---|
-| `core-service: npm test` | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ duration_ms 57959.6732` |
-| `pay-service: npm test` | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ duration_ms 25014.7686` |
+| `core-service: npm test` | **PASS** | `ℹ tests 73 | ℹ suites 21 | ℹ pass 73 | ℹ fail 0 | ℹ duration_ms 57959.6732` |
+| `pay-service: npm test` | **PASS** | `ℹ tests 24 | ℹ suites 8 | ℹ pass 24 | ℹ fail 0 | ℹ duration_ms 25014.7686` |
 | `Master Seed & Smoke Test` | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (10.34s)` |
 | `fairdrop_app: flutter analyze` | **PASS** | `No issues found! (ran in 42.1s)` |
 | `fairdrop_app: flutter test` | **PASS** | `01:01 +121: All tests passed!` |
 | `fairdrop_app: flutter build web` | **PASS** | `√ Built build\web` |
+
+---
+
+## F15: Single Source of Truth for Payout Figures (AUDIT-F15 / R9, R12, R13, R14)
+
+### Payout Figures Source Matrix
+| Screen / Card | Payout Figure / Metric | Authoritative Source | Prior Defect / Root Cause | F15 Single-Source-of-Truth Fix |
+|---|---|---|---|---|
+| **Home shift card** (`RiderHomeScreen`) | Total shift pay & itemized rows | `GET /api/riders/stats` (`today_earnings`, `base_pay_today`, `distance_pay_today`, `wait_pay_today`, `surge_pay_today`, `floor_topup_today`) | Placed entire payout under single line "Base Pay & Distance" with rogue "+₹199 buffer" | Split into individual itemized breakdown lines from backend stats; removed rogue "+₹199 buffer". |
+| **Home shift card** (`RiderHomeScreen`) | Deliveries count & grammar | `GET /api/riders/stats` (`deliveries_today`) | Grammatical defect: `"1 drops"` | Fixed grammar: `"${_deliveriesToday} ${_deliveriesToday == 1 ? 'drop' : 'drops'}"` |
+| **Active Delivery meter** (`ActiveDeliveryScreen`) | Estimated delivery pay | `ApiService.getPayConfig()` + distance formula | Defaulted base rate to ₹30.00; wait comp added ₹2/min continuously; labeled "DELIVERY EARNINGS METER" with "guaranteed min" | Dynamic `_baseRate` from pay-service config (₹15.00); flat wait comp (flat ₹10.00 bonus strictly after wait > 60s threshold, 55s = ₹0); labeled "Estimated delivery pay" (no "guaranteed min"). |
+| **Delivery Completed** (`PayBreakdownScreen`) | Total Delivery Pay & Itemized Ledger | `GET /api/orders/:id` (`order.pay_calculation` / `/api/pay/calculate`) | Lines were out of visual summing order; no server verification indicator | Reordered ledger lines so lines 1–4 (Base + Distance + Surge + Wait) visually precede and sum to Line 5 (Total Delivery Pay); added `VERIFIED` badge for live server response, `CACHED` (with interactive Retry) for fallback. |
+| **Rider Dashboard** (`RiderDashboardScreen`) | Total earnings, Deliveries, Avg Hourly | `GET /api/riders/stats` & `GET /api/pay/ledger/rider/:id` | Stray `4.3 hrs` constant; computed local figures | Bind to backend stats/ledger; shows "—" when engaged time is 0. |
+
+### Root Causes & Fixes Applied
+1. **Active Delivery Screen Defaults & Wait Logic (R9, R12)**:
+   - Root Cause: `active_delivery_screen.dart` initialized `_baseRate = 30.0` and computed wait comp as `_elapsedWaitMins * 2.0`.
+   - Fix: Bound base rate to `ApiService.getPayConfig()`, defaulting to ₹15.00. Wait compensation is flat ₹10.00 only after exceeding wait threshold (60s), ensuring 55s wait earns ₹0.00. Renamed header to "Estimated delivery pay" without "guaranteed min". Wrapped pay text in `FittedBox` to prevent 80px RenderFlex overflow at 393px.
+2. **Rider Home Shift Card Grammar & Ledger Breakdown (R13)**:
+   - Root Cause: `rider_home_screen.dart` dumped total pay into "Base Pay & Distance" with an unexplained `"(+₹199 buffer)"` string, and formatted grammar as `"${_deliveriesToday} drops"` even when `_deliveriesToday == 1`.
+   - Fix: Updated `core-service/src/modules/riders/rider.controller.js` to return breakdown metrics (`base_pay_today`, `distance_pay_today`, `wait_pay_today`, `surge_pay_today`, `floor_topup_today`). Split the shift card into distinct rows. Fixed grammar to `"1 drop"`. Removed `(+₹199 buffer)`.
+3. **Pay Breakdown Screen Visual Sum Order & Verification Badge (R14)**:
+   - Root Cause: In `pay_breakdown_screen.dart`, Total Delivery Pay was placed before Wait Time, confusing visual summation, and lacked an authoritative badge distinguishing live server calculation from fallback estimates.
+   - Fix: Reordered lines so Base, Distance, Surge, and Wait Comp visually precede and sum to Total Delivery Pay. Added a green `VERIFIED` badge when payload originates from the pay-service server, and an amber `CACHED` badge with an interactive `Retry` button on network error/fallback.
+
+### Files Modified
+- `core-service/src/modules/riders/rider.controller.js`
+- `fairdrop_app/lib/screens/rider_home_screen.dart`
+- `fairdrop_app/lib/screens/active_delivery_screen.dart`
+- `fairdrop_app/lib/screens/pay_breakdown_screen.dart`
+- `fairdrop_app/test/f15_payout_sources_test.dart`
+- `docs/FIX_REPORT.md`
+
+### Verification Evidence
+- `core-service npm test`: 73/73 tests passed.
+- `fairdrop_app flutter analyze`: No issues found!
+- `fairdrop_app flutter test`: 125/125 tests passed (including 4 new widget tests in `f15_payout_sources_test.dart` asserting zero layout exceptions at 393px width).
+
 

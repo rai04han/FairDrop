@@ -203,17 +203,39 @@ async function getStats(req, res) {
 
     const deliveriesToday = deliveredOrders.length;
     let totalEarningsToday = 0;
+    let basePayToday = 0;
+    let distancePayToday = 0;
+    let waitPayToday = 0;
+    let surgePayToday = 0;
+    let floorTopupToday = 0;
 
     for (const order of deliveredOrders) {
       if (order.pay_calculation_result) {
-        const pay =
-          parseFloat(order.pay_calculation_result.total_delivery_pay || 0) +
-          parseFloat(order.pay_calculation_result.floor_topup || 0);
-        totalEarningsToday += pay;
+        const base = parseFloat(order.pay_calculation_result.base_rate || 0);
+        const dist = parseFloat(order.pay_calculation_result.distance_pay || 0);
+        const wait = parseFloat(order.pay_calculation_result.wait_compensation || 0);
+        const surge = parseFloat(order.pay_calculation_result.surge_bonus || 0);
+        const topup = parseFloat(order.pay_calculation_result.floor_topup || 0);
+        const deliveryPay = parseFloat(
+          order.pay_calculation_result.total_delivery_pay !== undefined
+            ? order.pay_calculation_result.total_delivery_pay
+            : (base + dist + wait + surge)
+        );
+
+        basePayToday += base;
+        distancePayToday += dist;
+        waitPayToday += wait;
+        surgePayToday += surge;
+        floorTopupToday += topup;
+        totalEarningsToday += (deliveryPay + topup);
       }
     }
 
     totalEarningsToday = Math.round(totalEarningsToday * 100) / 100;
+    const baseDistancePayToday = Math.round((basePayToday + distancePayToday) * 100) / 100;
+    waitPayToday = Math.round(waitPayToday * 100) / 100;
+    surgePayToday = Math.round(surgePayToday * 100) / 100;
+    floorTopupToday = Math.round(floorTopupToday * 100) / 100;
     const currentZone = profile.current_zone_code || profile.assigned_zone_code || 'KLM-CHK';
     const hourlyRate = activeHours > 0 ? Math.round((totalEarningsToday / activeHours) * 100) / 100 : 0;
 
@@ -223,6 +245,12 @@ async function getStats(req, res) {
         active_hours_today: activeHours,
         deliveries_today: deliveriesToday,
         total_earnings_today: totalEarningsToday,
+        base_pay_today: Math.round(basePayToday * 100) / 100,
+        distance_pay_today: Math.round(distancePayToday * 100) / 100,
+        base_distance_pay_today: baseDistancePayToday,
+        wait_pay_today: waitPayToday,
+        surge_pay_today: surgePayToday,
+        floor_topup_today: floorTopupToday,
         current_zone: currentZone,
         current_zone_id: profile.current_zone_id || profile.zone_id || null,
         is_online: profile.is_online || false,

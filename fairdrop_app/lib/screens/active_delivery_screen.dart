@@ -15,8 +15,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../config/theme.dart';
 import '../models/order.dart';
+import '../services/api_service.dart';
 import '../services/core_api_service.dart';
-import '../services/exceptions.dart';
 import '../utils/format_utils.dart';
 
 class ActiveDeliveryScreen extends StatefulWidget {
@@ -49,6 +49,12 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   Timer? _waitTimer;
   int _elapsedWaitSeconds = 0;
 
+  // Live pay config constants (FR-12, FR-75)
+  double _baseRate = 15.0;
+  double _perKmRate = 6.0;
+  double _waitCompensation = 10.0;
+  int _waitThresholdMins = 1;
+
   static const _stepLabels = [
     '1. Heading',
     '2. At Kitchen',
@@ -71,6 +77,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   @override
   void initState() {
     super.initState();
+    _loadPayConfig();
     if (widget.order != null) {
       _orderModel = widget.order;
       _order = widget.order!.toJson();
@@ -104,6 +111,21 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
     _waitTimer?.cancel();
     _delayController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPayConfig() async {
+    try {
+      final configData = await ApiService.getPayConfig();
+      final config = configData['config'] as Map<String, dynamic>? ?? {};
+      if (mounted) {
+        setState(() {
+          _baseRate = double.tryParse(config['base_rate']?.toString() ?? '') ?? 15.0;
+          _perKmRate = double.tryParse(config['per_km_rate']?.toString() ?? '') ?? 6.0;
+          _waitCompensation = double.tryParse(config['wait_compensation']?.toString() ?? '') ?? 10.0;
+          _waitThresholdMins = int.tryParse(config['wait_threshold_mins']?.toString() ?? '') ?? 1;
+        });
+      }
+    } catch (_) {}
   }
 
   void _startWaitTimer() {
@@ -164,20 +186,23 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
     return false;
   }
 
-  double get _baseRate =>
-      (_order?['base_rate'] as num?)?.toDouble() ?? 30.0;
+  double get _effectiveBaseRate =>
+      (_order?['base_rate'] as num?)?.toDouble() ?? _baseRate;
 
-  double get _perKmRate =>
-      (_order?['per_km_rate'] as num?)?.toDouble() ?? 10.0;
+  double get _effectivePerKmRate =>
+      (_order?['per_km_rate'] as num?)?.toDouble() ?? _perKmRate;
 
   double get _distanceKm =>
       _orderModel?.distanceKm ?? (_order?['distance_km'] as num?)?.toDouble() ?? 3.5;
 
-  double get _distancePay => _distanceKm * _perKmRate;
+  double get _distancePay => _distanceKm * _effectivePerKmRate;
 
-  double get _waitPay => _elapsedWaitMins >= 1 ? (_elapsedWaitMins * 2.0) : 0.0;
+  // Flat wait compensation once wait exceeds the threshold (F6 / F15)
+  // E.g., 55s wait with a 1-min threshold earns ₹0 until it strictly exceeds 60s
+  double get _waitPay =>
+      _elapsedWaitSeconds > (_waitThresholdMins * 60) ? _waitCompensation : 0.0;
 
-  double get _totalMeterPay => _baseRate + _distancePay + _waitPay;
+  double get _totalMeterPay => _effectiveBaseRate + _distancePay + _waitPay;
 
   Future<void> _advanceStep() async {
     if (_currentStep >= 3) return;
@@ -399,15 +424,18 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                   ),
                   const FairDropLogo(fontSize: 22),
                   const SizedBox(width: 8),
-                  Text(
-                    'Active Delivery',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: FairDropColors.brandNavy,
+                  Expanded(
+                    child: Text(
+                      'Active Delivery',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: FairDropColors.brandNavy,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
@@ -449,28 +477,34 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: FairDropColors.brandGreen.withValues(alpha: 0.12),
-                                    child: const Icon(
-                                      Icons.two_wheeler_rounded,
-                                      size: 18,
-                                      color: FairDropColors.brandGreen,
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: FairDropColors.brandGreen.withValues(alpha: 0.12),
+                                      child: const Icon(
+                                        Icons.two_wheeler_rounded,
+                                        size: 18,
+                                        color: FairDropColors.brandGreen,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Order #$orderId',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w800,
-                                      color: FairDropColors.brandNavy,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Order #$orderId',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.w800,
+                                          color: FairDropColors.brandNavy,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
@@ -529,12 +563,16 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: List.generate(4, (i) {
                               final isPassed = i <= _currentStep;
-                              return Text(
-                                _stepLabels[i],
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 10,
-                                  fontWeight: isPassed ? FontWeight.w800 : FontWeight.w500,
-                                  color: isPassed ? FairDropColors.brandNavy : FairDropColors.slateMuted,
+                              return Expanded(
+                                child: Text(
+                                  _stepLabels[i],
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 10,
+                                    fontWeight: isPassed ? FontWeight.w800 : FontWeight.w500,
+                                    color: isPassed ? FairDropColors.brandNavy : FairDropColors.slateMuted,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               );
                             }),
@@ -899,23 +937,23 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'DELIVERY EARNINGS METER',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: FairDropColors.slateMuted,
-                                      letterSpacing: 0.5,
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Estimated delivery pay',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: FairDropColors.slateMuted,
+                                        letterSpacing: 0.5,
+                                      ),
                                     ),
-                                  ),
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                                    textBaseline: TextBaseline.alphabetic,
-                                    children: [
-                                      Text(
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
                                         formatCurrency(_totalMeterPay),
                                         style: GoogleFonts.plusJakartaSans(
                                           fontSize: 28,
@@ -923,19 +961,11 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                           color: FairDropColors.brandGreen,
                                         ),
                                       ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'guaranteed min',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: FairDropColors.brandGreen,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
@@ -1012,9 +1042,11 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              _buildBarLegend('Base Rate', FairDropColors.payBase),
-                              _buildBarLegend('Distance', FairDropColors.brandGreen),
-                              _buildBarLegend('Wait Compensation', FairDropColors.payWait),
+                              Flexible(child: _buildBarLegend('Base Rate', FairDropColors.payBase)),
+                              const SizedBox(width: 4),
+                              Flexible(child: _buildBarLegend('Distance', FairDropColors.brandGreen)),
+                              const SizedBox(width: 4),
+                              Flexible(child: _buildBarLegend('Wait Compensation', FairDropColors.payWait)),
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -1025,14 +1057,14 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                             iconBg: FairDropColors.payBase,
                             title: 'Base Pick-up Fee',
                             subtitle: 'Fixed starting allowance',
-                            amount: formatCurrency(_baseRate),
+                            amount: formatCurrency(_effectiveBaseRate),
                           ),
                           const SizedBox(height: 8),
                           _buildMeterItem(
                             icon: Icons.route_rounded,
                             iconBg: FairDropColors.brandGreen,
                             title: 'Distance Traversed',
-                            subtitle: 'Exact rate @ ₹${_perKmRate.toStringAsFixed(2)}/km (${_distanceKm.toStringAsFixed(1)} km metered)',
+                            subtitle: 'Exact rate @ ₹${_effectivePerKmRate.toStringAsFixed(2)}/km (${_distanceKm.toStringAsFixed(1)} km metered)',
                             amount: formatCurrency(_distancePay),
                           ),
                           const SizedBox(height: 8),
@@ -1040,7 +1072,9 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                             icon: Icons.timer_rounded,
                             iconBg: FairDropColors.payWait,
                             title: 'Wait Time Compensated',
-                            subtitle: '$_elapsedWaitMins mins wait @ ₹2.00/min (1 min threshold)',
+                            subtitle: _waitPay > 0
+                                ? 'Wait (${_elapsedWaitMins}m) exceeded ${_waitThresholdMins}m threshold (flat ₹${_waitCompensation.toStringAsFixed(2)} bonus)'
+                                : 'No bonus until wait exceeds ${_waitThresholdMins}m threshold (currently ${_elapsedWaitSeconds}s)',
                             amount: formatCurrency(_waitPay),
                             isTeal: true,
                           ),
@@ -1060,15 +1094,19 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
 
   Widget _buildBarLegend(String label, Color color) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
-        Text(
-          label,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: FairDropColors.slateMuted,
+        Flexible(
+          child: Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: FairDropColors.slateMuted,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

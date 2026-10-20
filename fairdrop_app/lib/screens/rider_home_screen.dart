@@ -44,8 +44,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   int _deliveriesToday = 0;
   String _currentZone = 'Chinnakada & Asramam (KL-02)';
 
+  // Split ledger components today
+  double _baseDistancePayToday = 0.0;
+  double _waitPayToday = 0.0;
+  double _surgePayToday = 0.0;
+  double _floorTopupToday = 0.0;
+
   // Pay config rates (default baseline Kerala parameters)
-  double _baseRate = 30.0;
+  double _baseRate = 15.0;
   double _perKmRate = 6.0;
   double _waitCompensation = 10.0;
   int _waitThresholdMins = 10;
@@ -165,7 +171,11 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _hourlyRate = (stats['hourly_rate'] as num?)?.toDouble() ??
               (_activeHoursToday > 0 ? _todayEarnings / _activeHoursToday : 0.0);
           _floorValue = double.tryParse(config['min_wage_per_hour']?.toString() ?? '');
-          _baseRate = double.tryParse(config['base_rate']?.toString() ?? '') ?? 30.0;
+          _baseDistancePayToday = (stats['base_distance_pay_today'] as num?)?.toDouble() ?? 0.0;
+          _waitPayToday = (stats['wait_pay_today'] as num?)?.toDouble() ?? 0.0;
+          _surgePayToday = (stats['surge_pay_today'] as num?)?.toDouble() ?? 0.0;
+          _floorTopupToday = (stats['floor_topup_today'] as num?)?.toDouble() ?? 0.0;
+          _baseRate = double.tryParse(config['base_rate']?.toString() ?? '') ?? 15.0;
           _perKmRate = double.tryParse(config['per_km_rate']?.toString() ?? '') ?? 6.0;
           _waitCompensation = double.tryParse(config['wait_compensation']?.toString() ?? '') ?? 10.0;
           _waitThresholdMins = int.tryParse(config['wait_threshold_mins']?.toString() ?? '') ?? 10;
@@ -740,7 +750,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
                       _todayEarnings > 0 && _hourlyRate >= _floorValue!
-                          ? 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr met (+₹${(_hourlyRate - _floorValue!).clamp(0, 999).toStringAsFixed(0)} buffer)'
+                          ? 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr met'
                           : 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr baseline',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.plusJakartaSans(
@@ -769,23 +779,23 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             color: FairDropColors.payBase,
             title: 'Base Pay & Distance',
             subtitle: _deliveriesToday > 0
-                ? '$_deliveriesToday drops @ ₹${_baseRate.toStringAsFixed(0)} + ₹${_perKmRate.toStringAsFixed(0)}/km standard transit'
+                ? '$_deliveriesToday ${_deliveriesToday == 1 ? "drop" : "drops"} @ ₹${_baseRate.toStringAsFixed(0)} + ₹${_perKmRate.toStringAsFixed(0)}/km standard transit'
                 : '₹${_baseRate.toStringAsFixed(0)} base + ₹${_perKmRate.toStringAsFixed(0)}/km standard transit rate',
-            amount: _todayEarnings > 0 ? '₹${_todayEarnings.toStringAsFixed(0)}' : '₹0',
+            amount: _baseDistancePayToday > 0 ? '₹${_baseDistancePayToday.toStringAsFixed(2)}' : '₹0.00',
           ),
           const SizedBox(height: 8),
           _buildFormulaRow(
             color: FairDropColors.payWait,
             title: 'Geofenced Wait Time',
             subtitle: 'Flat ₹${_waitCompensation.toStringAsFixed(0)} bonus when restaurant wait exceeds ${_waitThresholdMins}m',
-            amount: '₹0',
+            amount: _waitPayToday > 0 ? '₹${_waitPayToday.toStringAsFixed(2)}' : '₹0.00',
           ),
           const SizedBox(height: 8),
           _buildFormulaRow(
             color: FairDropColors.paySurge,
             title: 'Monsoon Surge Allowance',
             subtitle: '₹${_surgeBonus.toStringAsFixed(0)} bonus per order during declared severe weather',
-            amount: '₹0',
+            amount: _surgePayToday > 0 ? '₹${_surgePayToday.toStringAsFixed(2)}' : '₹0.00',
           ),
           const SizedBox(height: 8),
           _buildFormulaRow(
@@ -794,7 +804,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             subtitle: _floorValue != null
                 ? 'State wage floor baseline ₹${_floorValue!.truncateToDouble() == _floorValue ? _floorValue!.toInt() : _floorValue!.toStringAsFixed(0)}/hr min'
                 : 'Living wage floor protection',
-            amount: '₹0',
+            amount: _floorTopupToday > 0 ? '₹${_floorTopupToday.toStringAsFixed(2)}' : '₹0.00',
             isPositive: false,
           ),
           const SizedBox(height: 16),
