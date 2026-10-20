@@ -202,6 +202,49 @@ void main() {
 
       expect(find.text('Analytics Screen Target'), findsOneWidget);
     });
+
+    testWidgets('Error state renders Retry button and NO mock numbers on network failure', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: RiderDashboardScreen(
+            initialErrorMessage: 'Unable to load dashboard earnings. Please check your connection and try again.',
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify error view and Retry button
+      expect(find.byKey(const Key('dashboard_error_view')), findsOneWidget);
+      expect(find.byKey(const Key('btn_retry_dashboard')), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      // Verify NO fabricated mock numbers
+      expect(find.text('ORD-KLM-9021'), findsNothing);
+      expect(find.text('₹120.00'), findsNothing);
+      expect(find.text('₹82.00'), findsNothing);
+    });
+
+    testWidgets('Empty state with 0 deliveries renders clean zeros without NaN or Infinity', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: RiderDashboardScreen(
+            initialEarnings: [],
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify clean zeros
+      expect(find.byKey(const Key('summary_total_earned')), findsOneWidget);
+      expect(find.text('₹0.00'), findsWidgets);
+      expect(find.text('0'), findsWidgets);
+      expect(find.text('₹0.0/hr'), findsOneWidget);
+      expect(find.text('No completed deliveries yet today.'), findsOneWidget);
+      expect(find.textContaining('NaN'), findsNothing);
+      expect(find.textContaining('Infinity'), findsNothing);
+    });
   });
 
   group('Screen 10: Pay Analytics Screen Widget Tests', () {
@@ -295,6 +338,57 @@ void main() {
       expect(find.text('₹280'), findsWidgets);
       expect(find.text('₹700'), findsWidgets);
       expect(find.text('Scenario Model Trajectory'), findsOneWidget);
+    });
+
+    testWidgets('Error state renders Retry button and NO mock numbers on network failure', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: AnalyticsScreen(
+            initialErrorMessage: 'Unable to load analytics. Please check your connection and try again.',
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify error view and Retry button
+      expect(find.byKey(const Key('analytics_error_view')), findsOneWidget);
+      expect(find.byKey(const Key('btn_retry_analytics')), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      // Verify NO fabricated mock numbers
+      expect(find.text('rider-demo'), findsNothing);
+      expect(find.text('₹545'), findsNothing);
+      expect(find.text('₹140'), findsNothing);
+    });
+
+    testWidgets('Empty state with 0 deliveries renders clean zeros without NaN or Infinity', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: AnalyticsScreen(
+            initialAnalytics: {
+              'success': true,
+              'actual_comparison': {
+                'total_deliveries': 0,
+                'fairdrop_total': 0.0,
+                'cliff_total': 0.0,
+                'fairdrop_advantage': 0.0,
+                'data_points': [],
+              },
+            },
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify zero metrics
+      expect(find.byKey(const Key('text_fairdrop_total')), findsOneWidget);
+      expect(find.text('₹0'), findsWidgets);
+      expect(find.text('Over 0 deliveries'), findsOneWidget);
+      expect(find.text('No cumulative points available yet.'), findsOneWidget);
+      expect(find.textContaining('NaN'), findsNothing);
+      expect(find.textContaining('Infinity'), findsNothing);
     });
   });
 }

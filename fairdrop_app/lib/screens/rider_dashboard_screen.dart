@@ -29,11 +29,13 @@ import '../services/core_api_service.dart';
 class RiderDashboardScreen extends StatefulWidget {
   final List<dynamic>? initialEarnings;
   final bool autoFetch;
+  final String? initialErrorMessage;
 
   const RiderDashboardScreen({
     super.key,
     this.initialEarnings,
     this.autoFetch = true,
+    this.initialErrorMessage,
   });
 
   @override
@@ -52,7 +54,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   double _avgHourlyRate = 0.0;
   int _totalDeliveries = 0;
   double _totalFloorTopup = 0.0;
-  final double _activeHours = 4.25;
+  double get _activeHours => _totalDeliveries > 0 ? 4.25 : 0.0;
 
   // Track expanded delivery items
   final Set<String> _expandedOrderIds = {};
@@ -62,7 +64,10 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    if (widget.initialEarnings != null) {
+    if (widget.initialErrorMessage != null) {
+      _errorMessage = widget.initialErrorMessage;
+      _isLoading = false;
+    } else if (widget.initialEarnings != null) {
       _applyEarnings(widget.initialEarnings!);
     } else if (widget.autoFetch) {
       _loadEarnings();
@@ -86,7 +91,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   }
 
   void _applyDefaultMockEarnings() {
-    _applyEarnings(_getFallbackEarnings());
+    _applyEarnings([]);
   }
 
   void _applyEarnings(List<dynamic> earnings) {
@@ -132,7 +137,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
 
     try {
       final riderId = await CoreApiService.getUserId() ?? 'rider-001';
-      final response = await ApiService.getPayHistory(riderId);
+      final response = await ApiService.getPayHistory(riderId).timeout(
+        const Duration(seconds: 2),
+      );
       final rawList = response['earnings'] as List<dynamic>? ?? [];
 
       if (mounted) {
@@ -140,58 +147,14 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
       }
     } catch (e) {
       if (mounted) {
-        // Fallback to sample earnings for resilient demo and tests
-        _applyEarnings(_getFallbackEarnings());
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Unable to load dashboard earnings. Please check your connection and try again.';
+        });
       }
     }
   }
 
-  List<dynamic> _getFallbackEarnings() {
-    return [
-      {
-        'order_id': 'ORD-KLM-9021',
-        'base_rate': 20.00,
-        'distance_pay': 35.00,
-        'surge_bonus': 15.00,
-        'wait_compensation': 12.00,
-        'total_delivery_pay': 82.00,
-        'floor_topup': 8.00,
-        'hourly_earnings_so_far': 90.00,
-        'distance_km': 3.5,
-        'is_surge_active': 1,
-        'restaurant_wait_mins': 12,
-        'created_at': '2026-10-20T12:30:00Z',
-      },
-      {
-        'order_id': 'ORD-KLM-9014',
-        'base_rate': 20.00,
-        'distance_pay': 22.00,
-        'surge_bonus': 0.00,
-        'wait_compensation': 6.00,
-        'total_delivery_pay': 48.00,
-        'floor_topup': 0.00,
-        'hourly_earnings_so_far': 78.50,
-        'distance_km': 2.2,
-        'is_surge_active': 0,
-        'restaurant_wait_mins': 6,
-        'created_at': '2026-10-20T11:45:00Z',
-      },
-      {
-        'order_id': 'ORD-KLM-9008',
-        'base_rate': 20.00,
-        'distance_pay': 18.00,
-        'surge_bonus': 10.00,
-        'wait_compensation': 0.00,
-        'total_delivery_pay': 48.00,
-        'floor_topup': 12.00,
-        'hourly_earnings_so_far': 72.00,
-        'distance_km': 1.8,
-        'is_surge_active': 1,
-        'restaurant_wait_mins': 2,
-        'created_at': '2026-10-20T10:15:00Z',
-      },
-    ];
-  }
 
   void _toggleExpanded(String orderId) {
     setState(() {
@@ -387,7 +350,8 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   // ── 2. Statutory Floor Status Banner (FR-32) ──────────────────────────────
   Widget _buildFloorStatusBanner() {
     const double statutoryFloor = 70.0;
-    final bool isProtected = _avgHourlyRate >= statutoryFloor;
+    final bool isProtected = _totalDeliveries > 0 && _avgHourlyRate >= statutoryFloor;
+    final bool isCompliant = _totalDeliveries == 0 || isProtected;
 
     return Container(
       key: const Key('statutory_floor_status_banner'),
@@ -396,15 +360,15 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isProtected ? FairDropColors.brandGreen : FairDropColors.warningAmber,
+          color: isCompliant ? FairDropColors.brandGreen : FairDropColors.warningAmber,
           width: 1.5,
         ),
       ),
       child: Row(
         children: [
           Icon(
-            isProtected ? Icons.verified_rounded : Icons.info_rounded,
-            color: isProtected ? FairDropColors.brandGreen : FairDropColors.warningAmber,
+            isCompliant ? Icons.verified_rounded : Icons.info_rounded,
+            color: isCompliant ? FairDropColors.brandGreen : FairDropColors.warningAmber,
             size: 22,
           ),
           const SizedBox(width: 10),
@@ -413,9 +377,11 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isProtected
+                  _totalDeliveries == 0
                       ? 'Statutory Floor Guarantee: Protected'
-                      : 'Statutory Floor: Auto-Topup Active',
+                      : isProtected
+                          ? 'Statutory Floor Guarantee: Protected'
+                          : 'Statutory Floor: Auto-Topup Active',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -435,17 +401,21 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: isProtected
+              color: isCompliant
                   ? FairDropColors.mintBg
                   : FairDropColors.warningAmber.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              isProtected ? 'COMPLIANT' : 'TOP-UP APPLIED',
+              _totalDeliveries == 0
+                  ? 'COMPLIANT'
+                  : isProtected
+                      ? 'COMPLIANT'
+                      : 'TOP-UP APPLIED',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
-                color: isProtected
+                color: isCompliant
                     ? FairDropColors.brandGreen
                     : FairDropColors.warningAmber,
               ),
@@ -874,6 +844,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   // ── Error View ────────────────────────────────────────────────────────────
   Widget _buildErrorView() {
     return Center(
+      key: const Key('dashboard_error_view'),
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -892,6 +863,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
+              key: const Key('btn_retry_dashboard'),
               onPressed: _loadEarnings,
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Retry'),

@@ -29,11 +29,13 @@ import '../services/core_api_service.dart';
 class AnalyticsScreen extends StatefulWidget {
   final Map<String, dynamic>? initialAnalytics;
   final bool autoFetch;
+  final String? initialErrorMessage;
 
   const AnalyticsScreen({
     super.key,
     this.initialAnalytics,
     this.autoFetch = true,
+    this.initialErrorMessage,
   });
 
   @override
@@ -54,18 +56,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialAnalytics != null) {
+    if (widget.initialErrorMessage != null) {
+      _errorMessage = widget.initialErrorMessage;
+      _isLoading = false;
+    } else if (widget.initialAnalytics != null) {
       _applyAnalyticsData(widget.initialAnalytics!);
     } else if (widget.autoFetch) {
       _fetchAnalytics();
     } else {
-      _applyDefaultFallback();
+      _applyAnalyticsData({});
     }
-  }
-
-  void _applyDefaultFallback() {
-    final mock = _buildDefaultMockAnalytics();
-    _applyAnalyticsData(mock);
   }
 
   void _applyAnalyticsData(Map<String, dynamic> data) {
@@ -88,104 +88,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     try {
       final riderId = await CoreApiService.getUserId() ?? 'rider-001';
-      final res = await ApiService.getPayAnalytics(riderId);
+      final res = await ApiService.getPayAnalytics(riderId).timeout(
+        const Duration(seconds: 2),
+      );
       if (mounted) {
         _applyAnalyticsData(res);
       }
     } catch (e) {
       if (mounted) {
-        // Fallback to demo mock data so demo is always resilient
-        _applyDefaultFallback();
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Unable to load analytics. Please check your connection and try again.';
+        });
       }
     }
-  }
-
-  Map<String, dynamic> _buildDefaultMockAnalytics() {
-    return {
-      'success': true,
-      'rider_id': 'rider-demo',
-      'assumptions': {
-        'cliff_threshold_deliveries': 10,
-        'cliff_base_per_delivery': 20.0,
-        'cliff_bonus': 500.0,
-        'description':
-            'Industry standard cliff-bonus model: ₹20 base pay per delivery with a ₹500 flat bonus upon reaching exactly 10 deliveries. Zero bonus for deliveries 1–9. No distance pay, no wait compensation, no hourly floor.',
-      },
-      'actual_comparison': {
-        'total_deliveries': 7,
-        'fairdrop_total': 545.0,
-        'cliff_total': 140.0,
-        'fairdrop_advantage': 405.0,
-        'data_points': [
-          {
-            'delivery_index': 1,
-            'fairdrop_cumulative': 75.0,
-            'cliff_cumulative': 20.0,
-            'difference': 55.0
-          },
-          {
-            'delivery_index': 2,
-            'fairdrop_cumulative': 152.0,
-            'cliff_cumulative': 40.0,
-            'difference': 112.0
-          },
-          {
-            'delivery_index': 3,
-            'fairdrop_cumulative': 228.0,
-            'cliff_cumulative': 60.0,
-            'difference': 168.0
-          },
-          {
-            'delivery_index': 4,
-            'fairdrop_cumulative': 310.0,
-            'cliff_cumulative': 80.0,
-            'difference': 230.0
-          },
-          {
-            'delivery_index': 5,
-            'fairdrop_cumulative': 385.0,
-            'cliff_cumulative': 100.0,
-            'difference': 285.0
-          },
-          {
-            'delivery_index': 6,
-            'fairdrop_cumulative': 465.0,
-            'cliff_cumulative': 120.0,
-            'difference': 345.0
-          },
-          {
-            'delivery_index': 7,
-            'fairdrop_cumulative': 545.0,
-            'cliff_cumulative': 140.0,
-            'difference': 405.0
-          },
-        ],
-      },
-      'cliff_wins_scenario': {
-        'scenario_name': 'High-Volume Target-Achieved Shift (10 Deliveries)',
-        'description':
-            'A rider completes 10 short deliveries (2 km each) within a 4-hour peak window, clearing the cliff threshold.',
-        'winner': 'cliff',
-        'deliveries_count': 10,
-        'fairdrop_total': 280.0,
-        'cliff_total': 700.0,
-        'cliff_advantage': 420.0,
-        'rationale':
-            'When a rider clears the 10-delivery quota, the ₹500 bonus elevates cliff earnings to ₹700 vs FairDrop ₹280. However, Fairwork data shows over 80% of shifts fail to reach quota due to fatigue, weather, or order droughts, resulting in severe cliff penalties.',
-        'data_points': [
-          {'delivery_index': 1, 'fairdrop_cumulative': 27.0, 'cliff_cumulative': 20.0, 'difference': 7.0},
-          {'delivery_index': 2, 'fairdrop_cumulative': 54.0, 'cliff_cumulative': 40.0, 'difference': 14.0},
-          {'delivery_index': 3, 'fairdrop_cumulative': 81.0, 'cliff_cumulative': 60.0, 'difference': 21.0},
-          {'delivery_index': 4, 'fairdrop_cumulative': 108.0, 'cliff_cumulative': 80.0, 'difference': 28.0},
-          {'delivery_index': 5, 'fairdrop_cumulative': 135.0, 'cliff_cumulative': 100.0, 'difference': 35.0},
-          {'delivery_index': 6, 'fairdrop_cumulative': 162.0, 'cliff_cumulative': 120.0, 'difference': 42.0},
-          {'delivery_index': 7, 'fairdrop_cumulative': 189.0, 'cliff_cumulative': 140.0, 'difference': 49.0},
-          {'delivery_index': 8, 'fairdrop_cumulative': 216.0, 'cliff_cumulative': 160.0, 'difference': 56.0},
-          {'delivery_index': 9, 'fairdrop_cumulative': 243.0, 'cliff_cumulative': 180.0, 'difference': 63.0},
-          {'delivery_index': 10, 'fairdrop_cumulative': 280.0, 'cliff_cumulative': 700.0, 'difference': -420.0},
-        ],
-      },
-    };
   }
 
   @override
@@ -1131,6 +1047,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Widget _buildErrorView() {
     return Center(
+      key: const Key('analytics_error_view'),
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -1149,6 +1066,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
+              key: const Key('btn_retry_analytics'),
               onPressed: _fetchAnalytics,
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Retry'),
