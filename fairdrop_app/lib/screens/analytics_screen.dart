@@ -5,17 +5,19 @@
 //
 // PURPOSE:
 //   A dedicated analytics screen reachable from Rider Dashboard (/analytics).
-//   Compares FairDrop cumulative pay against a traditional industry cliff-bonus
-//   system over the same deliveries using fl_chart.
+//   Compares FairDrop linear incentive policy against illustrative target platform
+//   incentive ladders (Zomato benchmark) over 0–30 orders using fl_chart.
 //
 // CRITICAL CRITERIA:
-//   1. FR-34: Visualizes FairDrop vs Cliff-Bonus curves using fl_chart.
-//             Numbers fetched directly from GET /api/pay/analytics/:rider_id.
-//   2. FR-35: Explicitly states all cliff model assumptions on screen so
-//             the comparison can be challenged and verified.
-//   3. FR-36: Displays the backend-computed "Cliff-Wins Scenario" (balanced
-//             framing: when a rider clears 10+ deliveries, cliff bonus pays more;
-//             paired with empirical Fairwork data showing >80% miss quota).
+//   1. FR-34: Visualizes FairDrop (with/without peak) vs Zomato ladder curves (0–30 orders)
+//             using fl_chart. Explicitly states that base, distance, monsoon, and return
+//             pay are identical on both sides; the comparison focuses on daily incentives only.
+//   2. FR-35: Transparently states all illustrative model parameters on screen
+//             (Zomato ladder, FairDrop ₹17.04/order rate, ₹50 peak bonus) with an
+//             interactive toggle for peak windows covered.
+//   3. FR-36: Displays parity table showing orders needed to earn the same incentive
+//             (With peak: 16, 20, 23, 27; Without peak: 18, 23, 26, 30), highlights
+//             equal pay at 27 orders with peak, and includes all required notes.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -25,6 +27,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 import '../services/core_api_service.dart';
+import '../utils/incentive_analytics.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   final Map<String, dynamic>? initialAnalytics;
@@ -46,12 +49,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // 0 = Actual Deliveries, 1 = Cliff-Wins Scenario
-  int _selectedViewIndex = 0;
+  // Toggle for interactive peak windows covered (+₹50)
+  bool _includePeakBonus = true;
 
-  Map<String, dynamic> _assumptions = {};
-  Map<String, dynamic> _actualComparison = {};
-  Map<String, dynamic> _cliffWinsScenario = {};
+  // Actual completed deliveries today (for personal benchmark)
+  int _actualDeliveriesToday = 0;
+  double _fairDropTotal = 0.0;
+  double _benchmarkTotal = 0.0;
 
   @override
   void initState() {
@@ -70,11 +74,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   void _applyAnalyticsData(Map<String, dynamic> data) {
     setState(() {
-      _assumptions = (data['assumptions'] as Map<String, dynamic>?) ?? {};
-      _actualComparison =
-          (data['actual_comparison'] as Map<String, dynamic>?) ?? {};
-      _cliffWinsScenario =
-          (data['cliff_wins_scenario'] as Map<String, dynamic>?) ?? {};
+      final actualComparison = (data['actual_comparison'] as Map<String, dynamic>?) ?? {};
+      _actualDeliveriesToday = (actualComparison['total_deliveries'] as num?)?.toInt() ?? 0;
+      _fairDropTotal = (actualComparison['fairdrop_total'] as num?)?.toDouble() ??
+          IncentiveAnalytics.getFairDropIncentive(_actualDeliveriesToday, includePeak: _includePeakBonus);
+      _benchmarkTotal = (actualComparison['cliff_total'] as num?)?.toDouble() ??
+          IncentiveAnalytics.getZomatoIncentive(_actualDeliveriesToday);
       _isLoading = false;
       _errorMessage = null;
     });
@@ -89,17 +94,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     try {
       final riderId = await CoreApiService.getUserId() ?? 'rider-001';
       final res = await ApiService.getPayAnalytics(riderId).timeout(
-        const Duration(seconds: 2),
+        const Duration(seconds: 4),
       );
       if (mounted) {
         _applyAnalyticsData(res);
       }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Unable to load analytics. Please check your connection and try again.';
-        });
+    } catch (_) {
+      try {
+        final statsData = await CoreApiService.getTodayStats();
+        final stats = statsData['stats'] as Map<String, dynamic>? ?? {};
+        if (mounted) {
+          final count = (stats['deliveries_today'] as num?)?.toInt() ?? 0;
+          setState(() {
+            _actualDeliveriesToday = count;
+            _fairDropTotal = IncentiveAnalytics.getFairDropIncentive(count, includePeak: _includePeakBonus);
+            _benchmarkTotal = IncentiveAnalytics.getZomatoIncentive(count);
+            _isLoading = false;
+            _errorMessage = null;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Unable to load analytics. Please check your connection and try again.';
+          });
+        }
       }
     }
   }
@@ -140,42 +160,46 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   color: FairDropColors.brandGreen,
                   onRefresh: _fetchAnalytics,
                   child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ── Header Card ───────────────────────────────────────
-                    _buildHeaderCard(),
-                    const SizedBox(height: 16),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // ── Header Card ───────────────────────────────────────
+                        _buildHeaderCard(),
+                        const SizedBox(height: 14),
 
-                    // ── Mode Switcher (Actual vs Scenario) ────────────────
-                    _buildModeSelector(),
-                    const SizedBox(height: 16),
+                        // ── Scope Notice Banner (FR-34) ───────────────────────
+                        _buildScopeBanner(),
+                        const SizedBox(height: 14),
 
-                    // ── Comparison Metric Cards ───────────────────────────
-                    _buildMetricCards(),
-                    const SizedBox(height: 16),
+                        // ── Equal Pay & Metric Highlight Cards ────────────────
+                        _buildMetricCards(),
+                        const SizedBox(height: 16),
 
-                    // ── Interactive Chart (FR-34) ─────────────────────────
-                    _buildChartCard(),
-                    const SizedBox(height: 16),
+                        // ── Interactive Peak Windows Toggle (FR-35) ───────────
+                        _buildPeakToggleCard(),
+                        const SizedBox(height: 16),
 
-                    // ── Cliff Model Assumptions Card (FR-35) ──────────────
-                    _buildAssumptionsCard(),
-                    const SizedBox(height: 16),
+                        // ── Cumulative Incentive Chart 0–30 (FR-34, FR-36) ────
+                        _buildChartCard(),
+                        const SizedBox(height: 16),
 
-                    // ── Cliff-Wins Scenario Card (FR-36) ──────────────────
-                    _buildCliffWinsCard(),
-                    const SizedBox(height: 16),
+                        // ── Parity Table Card (FR-36) ─────────────────────────
+                        _buildParityTableCard(),
+                        const SizedBox(height: 16),
 
-                    // ── Policy & Fairwork Context Card ────────────────────
-                    _buildFairworkContextCard(),
-                    const SizedBox(height: 24),
-                  ],
+                        // ── Stated Assumptions Card (FR-35) ───────────────────
+                        _buildAssumptionsCard(),
+                        const SizedBox(height: 16),
+
+                        // ── Policy Explanatory Notes Card (FR-36) ─────────────
+                        _buildPolicyNotesCard(),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
     );
   }
 
@@ -218,7 +242,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'FairDrop Linear Compensation vs Industry Quota Cliffs',
+                  'FairDrop Linear Incentive Policy vs Target Benchmark',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
@@ -233,67 +257,31 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  // ── View Mode Selector (Segmented) ────────────────────────────────────────
-  Widget _buildModeSelector() {
+  // ── Scope Notice Banner (FR-34, FR-36) ────────────────────────────────────
+  Widget _buildScopeBanner() {
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: FairDropColors.surfaceLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: FairDropColors.mintBorder),
+        border: Border.all(color: FairDropColors.mintBorder.withValues(alpha: 0.8)),
       ),
-      padding: const EdgeInsets.all(4),
       child: Row(
         children: [
-          Expanded(
-            child: GestureDetector(
-              key: const Key('tab_actual_history'),
-              onTap: () => setState(() => _selectedViewIndex = 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _selectedViewIndex == 0
-                      ? FairDropColors.brandNavy
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Actual Deliveries',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: _selectedViewIndex == 0
-                        ? Colors.white
-                        : FairDropColors.slateMuted,
-                  ),
-                ),
-              ),
-            ),
+          const Icon(
+            Icons.info_outline_rounded,
+            color: FairDropColors.brandNavy,
+            size: 20,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 10),
           Expanded(
-            child: GestureDetector(
-              key: const Key('tab_cliff_wins'),
-              onTap: () => setState(() => _selectedViewIndex = 1),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _selectedViewIndex == 1
-                      ? FairDropColors.brandOrange
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Cliff-Wins Scenario',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: _selectedViewIndex == 1
-                        ? Colors.white
-                        : FairDropColors.slateMuted,
-                  ),
-                ),
+            child: Text(
+              IncentiveAnalytics.noteScope,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: FairDropColors.brandNavy,
+                height: 1.4,
               ),
             ),
           ),
@@ -304,22 +292,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   // ── Comparison Metric Cards ───────────────────────────────────────────────
   Widget _buildMetricCards() {
-    final isActual = _selectedViewIndex == 0;
-    final fairDropTotal = isActual
-        ? (_actualComparison['fairdrop_total'] ?? 0.0)
-        : (_cliffWinsScenario['fairdrop_total'] ?? 0.0);
-    final cliffTotal = isActual
-        ? (_actualComparison['cliff_total'] ?? 0.0)
-        : (_cliffWinsScenario['cliff_total'] ?? 0.0);
-    final count = isActual
-        ? (_actualComparison['total_deliveries'] ?? 0)
-        : (_cliffWinsScenario['deliveries_count'] ?? 10);
-    final difference = (fairDropTotal - cliffTotal).abs();
-    final fairDropLeads = fairDropTotal >= cliffTotal;
+    final fairDropAt27 = IncentiveAnalytics.getFairDropIncentive(27, includePeak: true);
+    final zomatoAt27 = IncentiveAnalytics.getZomatoIncentive(27);
 
     return Row(
       children: [
-        // FairDrop Card
+        // FairDrop Incentive Card
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(14),
@@ -343,19 +321,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      'FairDrop Pay',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: FairDropColors.brandGreen,
+                    Flexible(
+                      child: Text(
+                        'FairDrop Incentive',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: FairDropColors.brandGreen,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '₹${fairDropTotal.toStringAsFixed(0)}',
+                  '₹${_fairDropTotal.toStringAsFixed(0)}',
                   key: const Key('text_fairdrop_total'),
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 22,
@@ -364,7 +345,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ),
                 ),
                 Text(
-                  'Over $count deliveries',
+                  'Over $_actualDeliveriesToday deliveries',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     color: FairDropColors.slateMuted,
@@ -376,17 +357,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         ),
         const SizedBox(width: 10),
 
-        // Cliff Model Card
+        // Target Benchmark Card (Zomato Ladder)
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isActual ? Colors.red.shade200 : FairDropColors.brandOrange,
-                width: 1.5,
-              ),
+              border: Border.all(color: FairDropColors.brandOrange, width: 1.5),
               boxShadow: FairDropColors.cardShadow,
             ),
             child: Column(
@@ -397,25 +375,28 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     Container(
                       width: 8,
                       height: 8,
-                      decoration: BoxDecoration(
-                        color: isActual ? Colors.red.shade400 : FairDropColors.brandOrange,
+                      decoration: const BoxDecoration(
+                        color: FairDropColors.brandOrange,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      'Cliff Model',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: isActual ? Colors.red.shade700 : FairDropColors.brandOrange,
+                    Flexible(
+                      child: Text(
+                        'Zomato Ladder',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: FairDropColors.brandOrange,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '₹${cliffTotal.toStringAsFixed(0)}',
+                  '₹${_benchmarkTotal.toStringAsFixed(0)}',
                   key: const Key('text_cliff_total'),
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 22,
@@ -424,16 +405,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ),
                 ),
                 Text(
-                  fairDropLeads
-                      ? 'FairDrop +₹${difference.toStringAsFixed(0)}'
-                      : 'Cliff +₹${difference.toStringAsFixed(0)}',
+                  'Equal pay at 27 orders (₹${zomatoAt27.toInt()} vs ₹${fairDropAt27.toInt()})',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: fairDropLeads
-                        ? FairDropColors.brandGreen
-                        : FairDropColors.brandOrange,
+                    fontWeight: FontWeight.w600,
+                    color: FairDropColors.brandNavy,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -443,51 +421,77 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  // ── Chart Card (FR-34) ────────────────────────────────────────────────────
-  Widget _buildChartCard() {
-    final isActual = _selectedViewIndex == 0;
-    final List<dynamic> dataPoints = isActual
-        ? (_actualComparison['data_points'] as List<dynamic>? ?? [])
-        : (_cliffWinsScenario['data_points'] as List<dynamic>? ?? []);
-
-    if (dataPoints.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: FairDropColors.mintBorder),
-        ),
-        child: Center(
-          child: Text(
-            'No cumulative points available yet.',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 13,
-              color: FairDropColors.slateMuted,
+  // ── Peak Windows Toggle Card (FR-35) ──────────────────────────────────────
+  Widget _buildPeakToggleCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: FairDropColors.mintBorder),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Peak Windows Covered',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: FairDropColors.brandNavy,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _includePeakBonus
+                      ? '₹25 × 2 windows (12–2 PM, 7–9 PM) = +₹50 bonus active'
+                      : 'Linear rate only (₹0 peak bonus applied)',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: FairDropColors.slateMuted,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
+          Switch(
+            key: const Key('switch_peak_windows'),
+            value: _includePeakBonus,
+            activeThumbColor: FairDropColors.brandGreen,
+            onChanged: (val) {
+              setState(() {
+                _includePeakBonus = val;
+                _fairDropTotal = IncentiveAnalytics.getFairDropIncentive(
+                  _actualDeliveriesToday,
+                  includePeak: _includePeakBonus,
+                );
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Chart Card (0–30 Orders) (FR-34, FR-36) ───────────────────────────────
+  Widget _buildChartCard() {
+    final List<FlSpot> zomatoSpots = [];
+    final List<FlSpot> fairDropWithPeakSpots = [];
+    final List<FlSpot> fairDropNoPeakSpots = [];
+
+    for (int n = 0; n <= 30; n++) {
+      zomatoSpots.add(FlSpot(n.toDouble(), IncentiveAnalytics.getZomatoIncentive(n)));
+      fairDropWithPeakSpots.add(
+        FlSpot(n.toDouble(), IncentiveAnalytics.getFairDropIncentive(n, includePeak: true)),
+      );
+      fairDropNoPeakSpots.add(
+        FlSpot(n.toDouble(), IncentiveAnalytics.getFairDropIncentive(n, includePeak: false)),
       );
     }
-
-    // Build fl_chart spots
-    final List<FlSpot> fairDropSpots = [];
-    final List<FlSpot> cliffSpots = [];
-
-    double maxY = 100;
-    for (int i = 0; i < dataPoints.length; i++) {
-      final dp = dataPoints[i];
-      final x = (dp['delivery_index'] as num?)?.toDouble() ?? (i + 1).toDouble();
-      final fdY = (dp['fairdrop_cumulative'] as num?)?.toDouble() ?? 0.0;
-      final clY = (dp['cliff_cumulative'] as num?)?.toDouble() ?? 0.0;
-
-      fairDropSpots.add(FlSpot(x, fdY));
-      cliffSpots.add(FlSpot(x, clY));
-
-      if (fdY > maxY) maxY = fdY;
-      if (clY > maxY) maxY = clY;
-    }
-    maxY = maxY * 1.15; // 15% headroom
 
     return Container(
       key: const Key('pay_analytics_chart_container'),
@@ -504,12 +508,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                isActual ? 'Cumulative Delivery Pay' : 'Scenario Model Trajectory',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: FairDropColors.brandNavy,
+              Expanded(
+                child: Text(
+                  'Cumulative Daily Incentive vs Orders (0–30)',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: FairDropColors.brandNavy,
+                  ),
                 ),
               ),
               Container(
@@ -519,7 +525,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${dataPoints.length} Points',
+                  'Equal @ 27 Drops',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -531,9 +537,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            isActual
-                ? 'Shows your actual cumulative shift earnings vs quota-cliff model'
-                : '10-delivery shift simulation: Cliff bonus hits sharply at delivery #10',
+            'Compares linear FairDrop policy against illustrative Zomato ladder steps',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
               color: FairDropColors.slateMuted,
@@ -542,31 +546,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           const Divider(height: 24),
 
           // Chart Legend
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 6,
             children: [
-              _buildLegendPill(FairDropColors.brandGreen, 'FairDrop (Linear + Floor)'),
-              const SizedBox(width: 12),
-              _buildLegendPill(
-                isActual ? Colors.red.shade400 : FairDropColors.brandOrange,
-                'Cliff Model (Quota Trap)',
-              ),
+              _buildLegendPill(FairDropColors.brandGreen, 'FairDrop (With Peak)'),
+              _buildLegendPill(const Color(0xFF0D9488), 'FairDrop (Without Peak)'),
+              _buildLegendPill(FairDropColors.brandOrange, 'Zomato Ladder (Illustrative Example)'),
             ],
           ),
           const SizedBox(height: 18),
 
           // Chart Canvas
           SizedBox(
-            height: 260,
+            height: 270,
             child: LineChart(
               LineChartData(
-                minX: 1,
-                maxX: dataPoints.length.toDouble(),
+                minX: 0,
+                maxX: 30,
                 minY: 0,
-                maxY: maxY,
+                maxY: 600,
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  horizontalInterval: maxY > 500 ? 150 : 50,
+                  horizontalInterval: 100,
                   getDrawingHorizontalLine: (value) => FlLine(
                     color: FairDropColors.mintBorder.withValues(alpha: 0.5),
                     strokeWidth: 1,
@@ -579,7 +582,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(
                     axisNameWidget: Text(
-                      'Delivery Number (Cumulative)',
+                      'Completed Orders (0–30)',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -589,12 +592,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 26,
-                      interval: 1,
+                      interval: 5,
                       getTitlesWidget: (val, meta) {
                         return Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
-                            '#${val.toInt()}',
+                            val.toInt().toString(),
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
@@ -609,6 +612,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 42,
+                      interval: 100,
                       getTitlesWidget: (val, meta) {
                         return Text(
                           '₹${val.toInt()}',
@@ -623,51 +627,38 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ),
                 ),
                 lineBarsData: [
-                  // FairDrop Line
+                  // 1. Zomato step line
                   LineChartBarData(
-                    spots: fairDropSpots,
-                    isCurved: true,
-                    curveSmoothness: 0.2,
+                    spots: zomatoSpots,
+                    isCurved: false,
+                    isStepLineChart: true,
+                    color: FairDropColors.brandOrange,
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: false),
+                  ),
+                  // 2. FairDrop with Peak Line
+                  LineChartBarData(
+                    spots: fairDropWithPeakSpots,
+                    isCurved: false,
                     color: FairDropColors.brandGreen,
                     barWidth: 3.5,
                     isStrokeCapRound: true,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, barData, index) =>
-                          FlDotCirclePainter(
-                        radius: 4,
-                        color: Colors.white,
-                        strokeWidth: 2,
-                        strokeColor: FairDropColors.brandGreen,
-                      ),
-                    ),
+                    dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
                       color: FairDropColors.brandGreen.withValues(alpha: 0.08),
                     ),
                   ),
-                  // Cliff Line
+                  // 3. FairDrop without Peak Line
                   LineChartBarData(
-                    spots: cliffSpots,
+                    spots: fairDropNoPeakSpots,
                     isCurved: false,
-                    color: isActual ? Colors.red.shade400 : FairDropColors.brandOrange,
-                    barWidth: 3,
+                    color: const Color(0xFF0D9488),
+                    barWidth: 2.5,
+                    dashArray: [5, 5],
                     isStrokeCapRound: true,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, barData, index) =>
-                          FlDotCirclePainter(
-                        radius: 4,
-                        color: Colors.white,
-                        strokeWidth: 2,
-                        strokeColor: isActual ? Colors.red.shade400 : FairDropColors.brandOrange,
-                      ),
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: (isActual ? Colors.red : FairDropColors.brandOrange)
-                          .withValues(alpha: 0.06),
-                    ),
+                    dotData: const FlDotData(show: false),
                   ),
                 ],
               ),
@@ -703,14 +694,148 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  // ── Cliff Model Assumptions Card (FR-35) ──────────────────────────────────
-  Widget _buildAssumptionsCard() {
-    final threshold = _assumptions['cliff_threshold_deliveries'] ?? 10;
-    final basePay = _assumptions['cliff_base_per_delivery'] ?? 20.0;
-    final bonus = _assumptions['cliff_bonus'] ?? 500.0;
-    final description = _assumptions['description'] ??
-        'Industry standard cliff-bonus model: ₹20 base pay per delivery with a ₹500 flat bonus upon reaching exactly 10 deliveries. Zero bonus for deliveries 1–9. No distance pay, no wait compensation, no hourly floor.';
+  // ── Parity Table Card (FR-36) ─────────────────────────────────────────────
+  Widget _buildParityTableCard() {
+    return Container(
+      key: const Key('parity_table_card'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: FairDropColors.mintBorder),
+        boxShadow: FairDropColors.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.table_chart_rounded, color: FairDropColors.brandNavy, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Incentive Parity: Orders Needed to Match Benchmark',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: FairDropColors.brandNavy,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Demonstrates how FairDrop linear compensation delivers equal or higher incentive with fewer orders',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              color: FairDropColors.slateMuted,
+            ),
+          ),
+          const Divider(height: 20),
 
+          // Parity Table Rows
+          Table(
+            border: TableBorder(
+              horizontalInside: BorderSide(
+                color: FairDropColors.mintBorder.withValues(alpha: 0.6),
+                width: 1,
+              ),
+            ),
+            columnWidths: const {
+              0: FlexColumnWidth(1.4),
+              1: FlexColumnWidth(1.0),
+              2: FlexColumnWidth(1.1),
+              3: FlexColumnWidth(1.1),
+            },
+            children: [
+              TableRow(
+                decoration: BoxDecoration(
+                  color: FairDropColors.surfaceLow,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                children: [
+                  _buildTableCell('Target Tier', isHeader: true),
+                  _buildTableCell('Zomato', isHeader: true),
+                  _buildTableCell('FairDrop (Peak)', isHeader: true),
+                  _buildTableCell('FairDrop (No Peak)', isHeader: true),
+                ],
+              ),
+              ...IncentiveAnalytics.parityTable.map((tier) {
+                final isEqualPay = tier.zomatoOrders == 27;
+                return TableRow(
+                  decoration: isEqualPay
+                      ? BoxDecoration(color: FairDropColors.mintBg.withValues(alpha: 0.4))
+                      : null,
+                  children: [
+                    _buildTableCell('₹${tier.targetIncentive.toInt()} Incentive', isBold: isEqualPay),
+                    _buildTableCell('${tier.zomatoOrders} orders', isBold: isEqualPay),
+                    _buildTableCell(
+                      '${tier.fairDropOrdersWithPeak} orders',
+                      color: FairDropColors.brandGreen,
+                      isBold: true,
+                    ),
+                    _buildTableCell(
+                      '${tier.fairDropOrdersWithoutPeak} orders',
+                      color: const Color(0xFF0D9488),
+                      isBold: true,
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: FairDropColors.mintBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: FairDropColors.brandGreen, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Equal pay at 27 orders with peak bonus: ₹510 FairDrop = ₹510 Zomato.',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: FairDropColors.brandNavy,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableCell(
+    String text, {
+    bool isHeader = false,
+    bool isBold = false,
+    Color? color,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Text(
+        text,
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: isHeader ? 11 : 12,
+          fontWeight: isHeader || isBold ? FontWeight.w800 : FontWeight.w500,
+          color: color ?? (isHeader ? FairDropColors.brandNavy : FairDropColors.brandNavy),
+        ),
+      ),
+    );
+  }
+
+  // ── Stated Assumptions Card (FR-35) ───────────────────────────────────────
+  Widget _buildAssumptionsCard() {
     return Container(
       key: const Key('cliff_assumptions_card'),
       padding: const EdgeInsets.all(18),
@@ -728,7 +853,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               const Icon(Icons.rule_rounded, color: FairDropColors.brandNavy, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Stated Cliff Model Assumptions',
+                'Stated Model Parameters & Assumptions',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -739,7 +864,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Transparent parameters governing industry quota calculations (FR-35)',
+            'Transparent parameters governing comparative incentive calculations (FR-35)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
               color: FairDropColors.slateMuted,
@@ -752,12 +877,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildAssumptionChip('Quota Threshold', '$threshold deliveries'),
-              _buildAssumptionChip('Base Rate', '₹$basePay / delivery'),
-              _buildAssumptionChip('Cliff Bonus', '₹$bonus flat'),
-              _buildAssumptionChip('Distance Pay', '₹0.00 / km'),
-              _buildAssumptionChip('Wait Pay', '₹0.00 / min'),
-              _buildAssumptionChip('Floor Guarantee', 'None (₹0/hr)'),
+              _buildAssumptionChip('Benchmark Model', 'Zomato Ladder (28 Jun)'),
+              _buildAssumptionChip('FairDrop Linear Rate', '₹17.04 / order'),
+              _buildAssumptionChip('Peak Windows Bonus', '₹25 × 2 = ₹50'),
+              _buildAssumptionChip('Equal Pay Benchmark', '27 orders (₹510)'),
+              _buildAssumptionChip('Break-Even Policy', 'Spend ÷ Expected Orders'),
             ],
           ),
           const SizedBox(height: 14),
@@ -769,7 +893,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              description.toString(),
+              'Illustrative example data (single source, 28 Jun screenshot): 19 orders = ₹306, 23 = ₹383, 25 = ₹434, 27 = ₹510. FairDrop incentive(n) = ₹17.04 × n + ₹50 peak bonus.',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 height: 1.45,
@@ -814,201 +938,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  // ── Cliff-Wins Scenario Card (FR-36) ──────────────────────────────────────
-  Widget _buildCliffWinsCard() {
-    final scenarioName = _cliffWinsScenario['scenario_name'] ??
-        'High-Volume Target-Achieved Shift (10 Deliveries)';
-    final description = _cliffWinsScenario['description'] ??
-        'A rider completes 10 short deliveries (2 km each) within a 4-hour peak window, clearing the cliff threshold.';
-    final cliffAdvantage = _cliffWinsScenario['cliff_advantage'] ?? 420.0;
-    final cliffTotal = _cliffWinsScenario['cliff_total'] ?? 700.0;
-    final fairDropTotal = _cliffWinsScenario['fairdrop_total'] ?? 280.0;
-    final rationale = _cliffWinsScenario['rationale'] ??
-        'When a rider clears the 10-delivery quota, the ₹500 bonus elevates cliff earnings to ₹700 vs FairDrop ₹280. However, Fairwork data shows over 80% of shifts fail to reach quota due to fatigue, weather, or order droughts, resulting in severe cliff penalties.';
-
+  // ── Policy Explanatory Notes Card (FR-36) ──────────────────────────────────
+  Widget _buildPolicyNotesCard() {
     return Container(
-      key: const Key('cliff_wins_card'),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: FairDropColors.brandOrange.withValues(alpha: 0.5), width: 1.5),
-        boxShadow: FairDropColors.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: FairDropColors.brandOrange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.balance_rounded,
-                  color: FairDropColors.brandOrange,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: FairDropColors.brandOrange,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        'BALANCED FRAMING: CLIFF WINS (+₹${cliffAdvantage.toStringAsFixed(0)})',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      scenarioName.toString(),
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: FairDropColors.brandNavy,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            description.toString(),
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
-              color: FairDropColors.slateMuted,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Payout comparison row
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: FairDropColors.mintBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: FairDropColors.mintBorder),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Column(
-                  children: [
-                    Text(
-                      'FairDrop Total',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        color: FairDropColors.slateMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '₹${fairDropTotal.toStringAsFixed(0)}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: FairDropColors.brandGreen,
-                      ),
-                    ),
-                  ],
-                ),
-                Container(width: 1, height: 28, color: FairDropColors.mintBorder),
-                Column(
-                  children: [
-                    Text(
-                      'Cliff Model Total',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        color: FairDropColors.slateMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '₹${cliffTotal.toStringAsFixed(0)}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: FairDropColors.brandOrange,
-                      ),
-                    ),
-                  ],
-                ),
-                Container(width: 1, height: 28, color: FairDropColors.mintBorder),
-                Column(
-                  children: [
-                    Text(
-                      'Cliff Advantage',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        color: FairDropColors.slateMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '+₹${cliffAdvantage.toStringAsFixed(0)}',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: FairDropColors.brandOrange,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Rationale & academic justification
-          Text(
-            rationale.toString(),
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
-              fontStyle: FontStyle.italic,
-              color: FairDropColors.brandNavy,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          if (_selectedViewIndex != 1)
-            OutlinedButton.icon(
-              key: const Key('btn_visualize_scenario'),
-              onPressed: () => setState(() => _selectedViewIndex = 1),
-              icon: const Icon(Icons.show_chart_rounded, size: 18),
-              label: const Text('Visualize Scenario on Chart'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: FairDropColors.brandOrange,
-                side: const BorderSide(color: FairDropColors.brandOrange),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // ── Policy & Fairwork Context Card ────────────────────────────────────────
-  Widget _buildFairworkContextCard() {
-    return Container(
+      key: const Key('policy_notes_card'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: FairDropColors.brandNavy,
@@ -1022,7 +955,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               const Icon(Icons.verified_user_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Fairwork Kerala Principle',
+                'Policy Notes & Transparency Criteria',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
@@ -1031,17 +964,42 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _buildPolicyBullet(IncentiveAnalytics.notePeakAssumption),
           const SizedBox(height: 8),
-          Text(
-            'Traditional cliff bonuses incentivize aggressive driving and excessive hours to avoid losing the entire bonus on delivery #9. FairDrop decouples pay from arbitrary quotas, guaranteeing ₹70/hr statutory wage floors and fair compensation for every kilometre and wait minute.',
+          _buildPolicyBullet(IncentiveAnalytics.noteDailyVariation),
+          const SizedBox(height: 8),
+          _buildPolicyBullet(IncentiveAnalytics.noteBreakEven),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPolicyBullet(String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(top: 5),
+          width: 6,
+          height: 6,
+          decoration: const BoxDecoration(
+            color: FairDropColors.brandGreen,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
-              height: 1.5,
+              height: 1.45,
               color: Colors.white.withValues(alpha: 0.9),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

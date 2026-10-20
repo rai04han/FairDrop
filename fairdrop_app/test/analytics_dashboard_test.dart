@@ -43,62 +43,6 @@ void main() {
     },
   ];
 
-  final sampleAnalytics = {
-    'success': true,
-    'rider_id': 'rider-test',
-    'assumptions': {
-      'cliff_threshold_deliveries': 10,
-      'cliff_base_per_delivery': 20.0,
-      'cliff_bonus': 500.0,
-      'description':
-          'Industry standard cliff-bonus model: ₹20 base pay per delivery with a ₹500 flat bonus upon reaching exactly 10 deliveries. Zero bonus for deliveries 1–9. No distance pay, no wait compensation, no hourly floor.',
-    },
-    'actual_comparison': {
-      'total_deliveries': 2,
-      'fairdrop_total': 120.0,
-      'cliff_total': 40.0,
-      'fairdrop_advantage': 80.0,
-      'data_points': [
-        {
-          'delivery_index': 1,
-          'fairdrop_cumulative': 80.0,
-          'cliff_cumulative': 20.0,
-          'difference': 60.0,
-        },
-        {
-          'delivery_index': 2,
-          'fairdrop_cumulative': 120.0,
-          'cliff_cumulative': 40.0,
-          'difference': 80.0,
-        },
-      ],
-    },
-    'cliff_wins_scenario': {
-      'scenario_name': 'High-Volume Target-Achieved Shift (10 Deliveries)',
-      'description':
-          'A rider completes 10 short deliveries (2 km each) within a 4-hour peak window, clearing the cliff threshold.',
-      'winner': 'cliff',
-      'deliveries_count': 10,
-      'fairdrop_total': 280.0,
-      'cliff_total': 700.0,
-      'cliff_advantage': 420.0,
-      'rationale':
-          'When a rider clears the 10-delivery quota, the ₹500 bonus elevates cliff earnings to ₹700 vs FairDrop ₹280. However, Fairwork data shows over 80% of shifts fail to reach quota due to fatigue, weather, or order droughts, resulting in severe cliff penalties.',
-      'data_points': [
-        {'delivery_index': 1, 'fairdrop_cumulative': 27.0, 'cliff_cumulative': 20.0, 'difference': 7.0},
-        {'delivery_index': 2, 'fairdrop_cumulative': 54.0, 'cliff_cumulative': 40.0, 'difference': 14.0},
-        {'delivery_index': 3, 'fairdrop_cumulative': 81.0, 'cliff_cumulative': 60.0, 'difference': 21.0},
-        {'delivery_index': 4, 'fairdrop_cumulative': 108.0, 'cliff_cumulative': 80.0, 'difference': 28.0},
-        {'delivery_index': 5, 'fairdrop_cumulative': 135.0, 'cliff_cumulative': 100.0, 'difference': 35.0},
-        {'delivery_index': 6, 'fairdrop_cumulative': 162.0, 'cliff_cumulative': 120.0, 'difference': 42.0},
-        {'delivery_index': 7, 'fairdrop_cumulative': 189.0, 'cliff_cumulative': 140.0, 'difference': 49.0},
-        {'delivery_index': 8, 'fairdrop_cumulative': 216.0, 'cliff_cumulative': 160.0, 'difference': 56.0},
-        {'delivery_index': 9, 'fairdrop_cumulative': 243.0, 'cliff_cumulative': 180.0, 'difference': 63.0},
-        {'delivery_index': 10, 'fairdrop_cumulative': 280.0, 'cliff_cumulative': 700.0, 'difference': -420.0},
-      ],
-    },
-  };
-
   group('Screen 9: Rider Dashboard Widget Tests', () {
     testWidgets('Renders summary statistics and statutory floor banner (FR-30, FR-32)', (tester) async {
       await tester.pumpWidget(
@@ -247,12 +191,11 @@ void main() {
     });
   });
 
-  group('Screen 10: Pay Analytics Screen Widget Tests', () {
-    testWidgets('Renders comparative chart and metrics (FR-34)', (tester) async {
+  group('Screen 10: Pay Analytics Screen Widget Tests (F13 / R6)', () {
+    testWidgets('Renders scope notice, comparative chart, and benchmark metrics (FR-34)', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: AnalyticsScreen(
-            initialAnalytics: sampleAnalytics,
             autoFetch: false,
           ),
         ),
@@ -263,81 +206,96 @@ void main() {
       expect(find.text('Pay Analytics'), findsOneWidget);
       expect(find.text('Comparative Model Analytics'), findsOneWidget);
 
-      // Metric totals
-      expect(find.byKey(const Key('text_fairdrop_total')), findsOneWidget);
-      expect(find.text('₹120'), findsOneWidget);
-      expect(find.byKey(const Key('text_cliff_total')), findsOneWidget);
-      expect(find.text('₹40'), findsOneWidget);
+      // Scope Notice Banner (FR-34)
+      expect(
+        find.textContaining(
+          'Base, distance, monsoon, and return pay are identical on both platforms; this analysis compares daily incentives only.',
+        ),
+        findsOneWidget,
+      );
 
-      // Chart container
+      // Metric totals and equal pay indicator
+      expect(find.byKey(const Key('text_fairdrop_total')), findsOneWidget);
+      expect(find.byKey(const Key('text_cliff_total')), findsOneWidget);
+      expect(find.textContaining('Equal pay at 27 orders'), findsWidgets);
+
+      // Chart container and legend pills (FR-34, FR-36)
       expect(find.byKey(const Key('pay_analytics_chart_container')), findsOneWidget);
-      expect(find.text('FairDrop (Linear + Floor)'), findsOneWidget);
-      expect(find.text('Cliff Model (Quota Trap)'), findsOneWidget);
+      expect(find.text('FairDrop (With Peak)'), findsOneWidget);
+      expect(find.text('FairDrop (Without Peak)'), findsOneWidget);
+      expect(find.text('Zomato Ladder (Illustrative Example)'), findsOneWidget);
     });
 
-    testWidgets('Renders stated cliff model assumptions on screen (FR-35)', (tester) async {
+    testWidgets('Renders stated model parameters, peak toggle, and parity table (FR-35, FR-36)', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: AnalyticsScreen(
-            initialAnalytics: sampleAnalytics,
             autoFetch: false,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Stated assumptions card exists
+      // Peak toggle card and interactive toggle
+      final peakToggle = find.byKey(const Key('switch_peak_windows'));
+      expect(peakToggle, findsOneWidget);
+      expect(find.text('Peak Windows Covered'), findsOneWidget);
+
+      // Stated assumptions card exists (FR-35)
       final assumptionsCard = find.byKey(const Key('cliff_assumptions_card'));
       expect(assumptionsCard, findsOneWidget);
+      expect(find.text('Stated Model Parameters & Assumptions'), findsOneWidget);
+      expect(find.text('₹17.04 / order'), findsOneWidget);
+      expect(find.text('₹25 × 2 = ₹50'), findsOneWidget);
+      expect(find.text('27 orders (₹510)'), findsOneWidget);
 
-      expect(find.text('Stated Cliff Model Assumptions'), findsOneWidget);
-      expect(find.text('10 deliveries'), findsOneWidget);
-      expect(find.text('₹20.0 / delivery'), findsOneWidget);
-      expect(find.text('₹500.0 flat'), findsOneWidget);
-      expect(find.text('₹0.00 / km'), findsOneWidget);
-      expect(find.text('₹0.00 / min'), findsOneWidget);
-      expect(find.text('None (₹0/hr)'), findsOneWidget);
-      expect(find.textContaining('Industry standard cliff-bonus model: ₹20 base pay'), findsOneWidget);
+      // Parity table exists with exact tiers: With peak (16, 20, 23, 27), Without peak (18, 23, 26, 30) (FR-36)
+      final parityTable = find.byKey(const Key('parity_table_card'));
+      expect(parityTable, findsOneWidget);
+      expect(find.text('16 orders'), findsOneWidget);
+      expect(find.text('20 orders'), findsOneWidget);
+      expect(find.text('23 orders'), findsWidgets); // Appears in Zomato and FairDrop columns
+      expect(find.text('27 orders'), findsWidgets); // Appears in Zomato and FairDrop columns
+      expect(find.text('18 orders'), findsOneWidget);
+      expect(find.text('26 orders'), findsOneWidget);
+      expect(find.text('30 orders'), findsOneWidget);
+
+      // Toggle peak windows off and verify bonus description updates
+      await tester.tap(peakToggle);
+      await tester.pumpAndSettle();
+      expect(find.text('Linear rate only (₹0 peak bonus applied)'), findsOneWidget);
     });
 
-    testWidgets('Renders Cliff-Wins Scenario with balanced framing and chart toggle (FR-36)', (tester) async {
+    testWidgets('Renders policy notes and transparency criteria (FR-36)', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: AnalyticsScreen(
-            initialAnalytics: sampleAnalytics,
             autoFetch: false,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Cliff-wins scenario card exists
-      final cliffWinsCard = find.byKey(const Key('cliff_wins_card'));
-      expect(cliffWinsCard, findsOneWidget);
+      // Policy notes card (FR-36)
+      final policyCard = find.byKey(const Key('policy_notes_card'));
+      expect(policyCard, findsOneWidget);
+      expect(find.text('Policy Notes & Transparency Criteria'), findsOneWidget);
+      expect(
+        find.textContaining('Peak bonus assumes the rider is online in both designated windows'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('The incentive rate varies by day based on market conditions'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("The platform's break-even rate = expected Zomato incentive spend ÷ expected orders per rider"),
+        findsOneWidget,
+      );
 
-      // Scenario title and outcome
-      expect(find.textContaining('BALANCED FRAMING: CLIFF WINS (+₹420)'), findsOneWidget);
-      expect(find.text('High-Volume Target-Achieved Shift (10 Deliveries)'), findsOneWidget);
-      expect(find.text('₹700'), findsOneWidget); // Cliff total in scenario
-      expect(find.text('₹280'), findsOneWidget); // FairDrop total in scenario
-      expect(find.text('+₹420'), findsOneWidget); // Cliff advantage
-
-      // Balanced framing rationale citing Fairwork Kerala data
-      expect(find.textContaining('Fairwork data shows over 80% of shifts fail to reach quota'), findsOneWidget);
-
-      // Toggle to Cliff-Wins Scenario on chart
-      final visualizeBtn = find.byKey(const Key('btn_visualize_scenario'));
-      expect(visualizeBtn, findsOneWidget);
-
-      await tester.ensureVisible(visualizeBtn);
-      await tester.pumpAndSettle();
-      await tester.tap(visualizeBtn);
-      await tester.pumpAndSettle();
-
-      // Metric cards now reflect the scenario values (FairDrop ₹280 vs Cliff ₹700)
-      expect(find.text('₹280'), findsWidgets);
-      expect(find.text('₹700'), findsWidgets);
-      expect(find.text('Scenario Model Trajectory'), findsOneWidget);
+      // No unsourced cliff wins claim or quota trap wording
+      expect(find.textContaining('over 80% of shifts fail quota'), findsNothing);
+      expect(find.textContaining('CLIFF WINS'), findsNothing);
     });
 
     testWidgets('Error state renders Retry button and NO mock numbers on network failure', (tester) async {
@@ -372,8 +330,6 @@ void main() {
                 'total_deliveries': 0,
                 'fairdrop_total': 0.0,
                 'cliff_total': 0.0,
-                'fairdrop_advantage': 0.0,
-                'data_points': [],
               },
             },
             autoFetch: false,
@@ -386,7 +342,6 @@ void main() {
       expect(find.byKey(const Key('text_fairdrop_total')), findsOneWidget);
       expect(find.text('₹0'), findsWidgets);
       expect(find.text('Over 0 deliveries'), findsOneWidget);
-      expect(find.text('No cumulative points available yet.'), findsOneWidget);
       expect(find.textContaining('NaN'), findsNothing);
       expect(find.textContaining('Infinity'), findsNothing);
     });
