@@ -21,7 +21,8 @@ import '../services/core_api_service.dart';
 import '../services/api_service.dart';
 
 class RiderHomeScreen extends StatefulWidget {
-  const RiderHomeScreen({super.key});
+  final String? initialError;
+  const RiderHomeScreen({super.key, this.initialError});
 
   @override
   State<RiderHomeScreen> createState() => _RiderHomeScreenState();
@@ -33,6 +34,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   Timer? _pollTimer;
   Timer? _countdownTimer;
   int _secondsLeft = 45;
+  String? _homeDataError;
 
   // Today's stats
   double _todayEarnings = 685.0;
@@ -45,9 +47,23 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   // Active incoming order (if assigned)
   Map<String, dynamic>? _incomingOrder;
 
+  static String _extractAddress(dynamic address, {String fallback = ''}) {
+    if (address == null) return fallback;
+    if (address is String) return address.trim().isNotEmpty ? address.trim() : fallback;
+    if (address is Map) {
+      final map = address is Map<String, dynamic> ? address : Map<String, dynamic>.from(address);
+      final val = (map['label'] ?? map['name'] ?? map['area'] ?? map['address'])?.toString();
+      if (val != null && val.trim().isNotEmpty) return val.trim();
+    }
+    return fallback;
+  }
+
   @override
   void initState() {
     super.initState();
+    if (widget.initialError != null) {
+      _homeDataError = widget.initialError;
+    }
     _loadStats();
     _startPolling();
     _startCountdown();
@@ -164,7 +180,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       context,
       '/order-acceptance',
       arguments: order ?? {
-        'id': 'FD-8821',
+        'order_id': 'FD-8821',
         'pickup_address': 'Supreme Bakers, Chinnakada',
         'delivery_address': 'Kadappakkada Junction',
         'distance_km': 3.8,
@@ -179,6 +195,99 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_homeDataError != null) {
+      return Scaffold(
+        backgroundColor: FairDropColors.mintBg,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    size: 56,
+                    color: FairDropColors.errorRed,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Rider Dashboard Error',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: FairDropColors.brandNavy,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _homeDataError!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      color: FairDropColors.slateMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      OutlinedButton(
+                        key: const Key('btn_back_rider_home'),
+                        onPressed: () {
+                          if (Navigator.canPop(context)) {
+                            Navigator.pop(context);
+                          } else {
+                            Navigator.pushReplacementNamed(context, '/login');
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          shape: const StadiumBorder(),
+                        ),
+                        child: Text(
+                          'Back',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w700,
+                            color: FairDropColors.brandNavy,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      FilledButton(
+                        key: const Key('btn_retry_rider_home'),
+                        onPressed: () {
+                          setState(() {
+                            _homeDataError = null;
+                          });
+                          _loadStats();
+                          _pollForOrder();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: FairDropColors.brandGreen,
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: const StadiumBorder(),
+                        ),
+                        child: Text(
+                          'Retry',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: FairDropColors.mintBg,
       body: SafeArea(
@@ -878,7 +987,13 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Supreme Bakers, Chinnakada',
+                                _extractAddress(
+                                  _incomingOrder?['restaurant_address'],
+                                  fallback: _extractAddress(
+                                    _incomingOrder?['pickup_address'],
+                                    fallback: (_incomingOrder?['restaurant_name'] as String?) ?? 'Supreme Bakers, Chinnakada',
+                                  ),
+                                ),
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -886,7 +1001,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                 ),
                               ),
                               Text(
-                                '1.2 km • 4 mins',
+                                '${((_incomingOrder?['distance_km'] as num?)?.toDouble() ?? 3.8).toStringAsFixed(1)} km trip',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -896,7 +1011,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                             ],
                           ),
                           Text(
-                            'Order #FD-8821 • 2 items (Chicken Dum Biryani x2)',
+                            'Order #${_incomingOrder?['order_id'] ?? _incomingOrder?['id'] ?? 'FD-8821'}',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
@@ -935,7 +1050,10 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Kadappakkada Junction',
+                                _extractAddress(
+                                  _incomingOrder?['delivery_address'],
+                                  fallback: (_incomingOrder?['delivery_location'] as String?) ?? 'Kadappakkada Junction',
+                                ),
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -943,7 +1061,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                 ),
                               ),
                               Text(
-                                '2.6 km • 9 mins',
+                                'Drop',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -982,7 +1100,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ),
             icon: const Icon(Icons.check_circle_outline, size: 20),
             label: Text(
-              'Accept Order (₹92 Guaranteed)',
+              'Accept Order (₹${(((_incomingOrder?['pay_calculation_result'] as Map<String, dynamic>?)?['guaranteed_payout'] ?? _incomingOrder?['guaranteed_payout'] as num?)?.toDouble() ?? 92.0).toStringAsFixed(0)} Guaranteed)',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,

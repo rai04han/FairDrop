@@ -25,12 +25,14 @@ class OrderAcceptanceScreen extends StatefulWidget {
   final Order? order;
   final Map<String, dynamic>? payConfig;
   final bool autoStartTimer;
+  final String? initialError;
 
   const OrderAcceptanceScreen({
     super.key,
     this.order,
     this.payConfig,
     this.autoStartTimer = true,
+    this.initialError,
   });
 
   @override
@@ -46,18 +48,48 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
   bool _outOfZoneConsent = false;
   Timer? _timer;
   int _secondsLeft = 42;
+  String? _dataError;
+
+  static String _extractAddress(dynamic address, {String fallback = ''}) {
+    if (address == null) return fallback;
+    if (address is String) return address.trim().isNotEmpty ? address.trim() : fallback;
+    if (address is OrderAddress) return address.label.isNotEmpty ? address.label : fallback;
+    if (address is Map) {
+      final map = address is Map<String, dynamic> ? address : Map<String, dynamic>.from(address);
+      final val = (map['label'] ?? map['name'] ?? map['area'] ?? map['address'])?.toString();
+      if (val != null && val.trim().isNotEmpty) return val.trim();
+    }
+    return fallback;
+  }
 
   @override
   void initState() {
     super.initState();
-    if (widget.order != null) {
-      _orderModel = widget.order;
-      _order = widget.order!.toJson();
+    if (widget.initialError != null) {
+      _dataError = widget.initialError;
     }
-    if (widget.payConfig != null) {
-      _payConfig = widget.payConfig;
+    try {
+      if (widget.order != null) {
+        _orderModel = widget.order;
+        _order = widget.order!.toJson();
+      }
+      if (widget.payConfig != null) {
+        _payConfig = widget.payConfig;
+      }
+    } catch (e) {
+      _dataError = 'Failed to load order: $e';
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initFromRoute();
+    });
+    if (widget.autoStartTimer) {
+      _startTimer();
+    }
+  }
+
+  void _initFromRoute() {
+    if (!mounted) return;
+    try {
       if (_orderModel == null && _order == null) {
         final args = ModalRoute.of(context)?.settings.arguments;
         if (args is Order) {
@@ -68,15 +100,18 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
           try {
             _orderModel = Order.fromJson(args);
           } catch (_) {}
+        } else if (args != null) {
+          _dataError = 'Invalid order data format';
         }
-        if (mounted) setState(() {});
       }
-      if (widget.payConfig == null) {
+      if (_dataError == null && widget.payConfig == null && _payConfig == null) {
         _loadPayConfig();
       }
-    });
-    if (widget.autoStartTimer) {
-      _startTimer();
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) {
+        setState(() => _dataError = 'Error loading order: $e');
+      }
     }
   }
 
@@ -228,12 +263,109 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final restaurantName = _order?['restaurant_name'] as String? ??
-        (_order?['restaurant_address'] as Map<String, dynamic>?)?['name'] as String? ??
-        'Ashtamudi Bites';
-    final deliveryName = _order?['delivery_location'] as String? ??
-        (_order?['delivery_address'] as Map<String, dynamic>?)?['area'] as String? ??
-        'Kadappakkada';
+    if (_dataError != null) {
+      return Scaffold(
+        backgroundColor: FairDropColors.mintBg,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    size: 56,
+                    color: FairDropColors.errorRed,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Order Acceptance Error',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: FairDropColors.brandNavy,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _dataError!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      color: FairDropColors.slateMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      OutlinedButton(
+                        key: const Key('btn_back_acceptance'),
+                        onPressed: () {
+                          if (Navigator.canPop(context)) {
+                            Navigator.pop(context);
+                          } else {
+                            Navigator.pushReplacementNamed(context, '/rider-home');
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          shape: const StadiumBorder(),
+                        ),
+                        child: Text(
+                          'Back',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w700,
+                            color: FairDropColors.brandNavy,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      FilledButton(
+                        key: const Key('btn_retry_acceptance'),
+                        onPressed: () {
+                          setState(() {
+                            _dataError = null;
+                          });
+                          _initFromRoute();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: FairDropColors.brandGreen,
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: const StadiumBorder(),
+                        ),
+                        child: Text(
+                          'Retry',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final restaurantName = (_orderModel != null && _orderModel!.restaurantAddress.label.isNotEmpty)
+        ? _orderModel!.restaurantAddress.label
+        : (_order?['restaurant_name'] as String? ??
+            _extractAddress(
+              _order?['restaurant_address'],
+              fallback: _extractAddress(_order?['pickup_address'], fallback: 'Ashtamudi Bites'),
+            ));
+    final deliveryName = (_orderModel != null && _orderModel!.deliveryAddress.label.isNotEmpty)
+        ? _orderModel!.deliveryAddress.label
+        : (_order?['delivery_location'] as String? ??
+            _extractAddress(_order?['delivery_address'], fallback: 'Kadappakkada'));
 
     return Scaffold(
       backgroundColor: FairDropColors.mintBg,
@@ -252,15 +384,17 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                   ),
                   const FairDropLogo(fontSize: 22),
                   const SizedBox(width: 8),
-                  Text(
-                    'Order Acceptance',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: FairDropColors.brandNavy,
+                  Expanded(
+                    child: Text(
+                      'Order Acceptance',
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: FairDropColors.brandNavy,
+                      ),
                     ),
                   ),
-                  const Spacer(),
                   CircleAvatar(
                     radius: 16,
                     backgroundColor: FairDropColors.brandGreen.withValues(alpha: 0.12),
@@ -281,9 +415,10 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
                             color: _secondsLeft > 0
                                 ? FairDropColors.brandOrange.withValues(alpha: 0.15)
                                 : const Color(0xFFE2E8F0),
@@ -300,20 +435,24 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                                     : FairDropColors.slateMuted,
                               ),
                               const SizedBox(width: 6),
-                              Text(
-                                _secondsLeft > 0 ? 'Accept in ${_secondsLeft}s' : 'Offer Expired',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: _secondsLeft > 0
-                                      ? FairDropColors.brandOrange
-                                      : FairDropColors.slateMuted,
+                              Flexible(
+                                child: Text(
+                                  _secondsLeft > 0 ? 'Accept in ${_secondsLeft}s' : 'Offer Expired',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: _secondsLeft > 0
+                                        ? FairDropColors.brandOrange
+                                        : FairDropColors.slateMuted,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        Row(
+                      ),
+                      Row(
                           children: [
                             Container(
                               width: 8,
@@ -591,14 +730,17 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'Your pay for this order',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  color: FairDropColors.brandNavy,
+                              Expanded(
+                                child: Text(
+                                  'Your pay for this order',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                    color: FairDropColors.brandNavy,
+                                  ),
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
@@ -688,27 +830,30 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'GUARANTEED PAYOUT',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        color: FairDropColors.slateMuted,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'GUARANTEED PAYOUT',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: FairDropColors.slateMuted,
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      "Minimum you'll earn",
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        color: FairDropColors.brandNavy,
+                                      Text(
+                                        "Minimum you'll earn",
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          color: FairDropColors.brandNavy,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 8),
                                 Text(
                                   formatCurrency(_estimatedTotal),
                                   style: GoogleFonts.plusJakartaSans(
@@ -948,47 +1093,54 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 4),
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            label,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: isSurge ? FairDropColors.brandOrange : FairDropColors.brandNavy,
+                            ),
+                          ),
+                        ),
+                        if (isSurge) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.bolt_rounded, size: 14, color: FairDropColors.brandOrange),
+                        ],
+                      ],
+                    ),
                     Text(
-                      label,
+                      desc,
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: isSurge ? FairDropColors.brandOrange : FairDropColors.brandNavy,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: FairDropColors.slateMuted,
                       ),
                     ),
-                    if (isSurge) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.bolt_rounded, size: 14, color: FairDropColors.brandOrange),
-                    ],
                   ],
                 ),
-                Text(
-                  desc,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: FairDropColors.slateMuted,
-                  ),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
+        const SizedBox(width: 12),
         Text(
           amount,
           style: GoogleFonts.plusJakartaSans(

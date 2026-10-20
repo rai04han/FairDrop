@@ -58,12 +58,21 @@ class OrderAddress {
 
   LatLng toLatLng() => LatLng(latitude, longitude);
 
-  factory OrderAddress.fromJson(Map<String, dynamic> json) {
-    return OrderAddress(
-      label: json['label'] as String? ?? '',
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
-    );
+  factory OrderAddress.fromJson(dynamic json) {
+    if (json == null) {
+      return OrderAddress(latitude: 0.0, longitude: 0.0);
+    }
+    if (json is String) {
+      return OrderAddress(label: json, latitude: 0.0, longitude: 0.0);
+    }
+    if (json is Map) {
+      final map = json is Map<String, dynamic> ? json : Map<String, dynamic>.from(json);
+      final lat = (map['latitude'] ?? map['lat'] as num?)?.toDouble() ?? 0.0;
+      final lng = (map['longitude'] ?? map['lng'] as num?)?.toDouble() ?? 0.0;
+      final lbl = (map['label'] ?? map['name'] ?? map['area'] ?? map['address'] ?? '').toString();
+      return OrderAddress(label: lbl, latitude: lat, longitude: lng);
+    }
+    return OrderAddress(label: json.toString(), latitude: 0.0, longitude: 0.0);
   }
 
   Map<String, dynamic> toJson() {
@@ -215,13 +224,15 @@ class Order {
     final rawHistory = json['status_history'] as List<dynamic>? ?? [];
     final rawDeclined = json['declined_by'] as List<dynamic>? ?? [];
 
-    final deliveryAddr = json['delivery_address'] is Map<String, dynamic>
-        ? OrderAddress.fromJson(json['delivery_address'] as Map<String, dynamic>)
+    final deliveryAddr = json['delivery_address'] != null
+        ? OrderAddress.fromJson(json['delivery_address'])
         : OrderAddress(latitude: 0.0, longitude: 0.0);
 
-    final restaurantAddr = json['restaurant_address'] is Map<String, dynamic>
-        ? OrderAddress.fromJson(json['restaurant_address'] as Map<String, dynamic>)
-        : OrderAddress(latitude: 0.0, longitude: 0.0);
+    final restaurantAddr = json['restaurant_address'] != null
+        ? OrderAddress.fromJson(json['restaurant_address'])
+        : (json['pickup_address'] != null
+            ? OrderAddress.fromJson(json['pickup_address'])
+            : OrderAddress(latitude: 0.0, longitude: 0.0));
 
     final payResult = json['pay_calculation_result'] is Map<String, dynamic>
         ? PayResult.fromJson(json['pay_calculation_result'] as Map<String, dynamic>)

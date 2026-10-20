@@ -56,6 +56,18 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
     '4. Delivered',
   ];
 
+  static String _extractAddress(dynamic address, {String fallback = ''}) {
+    if (address == null) return fallback;
+    if (address is String) return address.trim().isNotEmpty ? address.trim() : fallback;
+    if (address is OrderAddress) return address.label.isNotEmpty ? address.label : fallback;
+    if (address is Map) {
+      final map = address is Map<String, dynamic> ? address : Map<String, dynamic>.from(address);
+      final val = (map['label'] ?? map['name'] ?? map['area'] ?? map['address'])?.toString();
+      if (val != null && val.trim().isNotEmpty) return val.trim();
+    }
+    return fallback;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -351,17 +363,24 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   Widget build(BuildContext context) {
     final orderId = _orderModel?.orderId ?? _order?['order_id'] as String? ?? 'ORD-20261019-0001';
     final restaurant = _order?['restaurant_name'] as String? ??
-        (_order?['restaurant_address'] as Map<String, dynamic>?)?['label'] as String? ??
-        'Hotel Arun, Kollam';
+        (_orderModel != null && _orderModel!.restaurantAddress.label.isNotEmpty
+            ? _orderModel!.restaurantAddress.label
+            : _extractAddress(
+                _order?['restaurant_address'],
+                fallback: _extractAddress(_order?['pickup_address'], fallback: 'Hotel Arun, Kollam'),
+              ));
     final restaurantAddr = _order?['restaurant_address_text'] as String? ??
-        (_order?['restaurant_address'] as Map<String, dynamic>?)?['label'] as String? ??
-        'Chinnakada, Kollam';
+        (_orderModel != null && _orderModel!.restaurantAddress.label.isNotEmpty
+            ? _orderModel!.restaurantAddress.label
+            : _extractAddress(_order?['restaurant_address'], fallback: 'Chinnakada, Kollam'));
     final delivery = _order?['delivery_location'] as String? ??
-        (_order?['delivery_address'] as Map<String, dynamic>?)?['label'] as String? ??
-        'Customer Delivery';
+        (_orderModel != null && _orderModel!.deliveryAddress.label.isNotEmpty
+            ? _orderModel!.deliveryAddress.label
+            : _extractAddress(_order?['delivery_address'], fallback: 'Customer Delivery'));
     final deliveryAddr = _order?['delivery_address_text'] as String? ??
-        (_order?['delivery_address'] as Map<String, dynamic>?)?['label'] as String? ??
-        'Kollam City';
+        (_orderModel != null && _orderModel!.deliveryAddress.label.isNotEmpty
+            ? _orderModel!.deliveryAddress.label
+            : _extractAddress(_order?['delivery_address'], fallback: 'Kollam City'));
 
     return Scaffold(
       backgroundColor: FairDropColors.mintBg,
