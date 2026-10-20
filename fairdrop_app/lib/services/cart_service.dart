@@ -108,20 +108,8 @@ class CartService {
     return 2.5;
   }
 
-  /// Base rate ₹30 + ₹10/km per PRD baseline config
-  double get deliveryFee {
-    final fee = 30.0 + (distanceKm * 10.0);
-    return double.parse(fee.toStringAsFixed(2));
-  }
-
-  double get platformFee => 5.0;
-
-  double get taxesAndCharges {
-    final tax = subtotal * 0.05; // 5% GST
-    return double.parse(tax.toStringAsFixed(2));
-  }
-
-  double get grandTotal => subtotal + deliveryFee + platformFee + taxesAndCharges;
+  /// FR-59 / D4: Total is sum of item prices only (no delivery fee, platform fee, GST).
+  double get grandTotal => subtotal;
 
   List<Map<String, dynamic>> toOrderItems() {
     return _items.map((i) => {

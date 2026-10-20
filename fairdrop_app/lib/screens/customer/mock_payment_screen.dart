@@ -1,8 +1,7 @@
 // ============================================================================
 // FairDrop — Mock Payment Screen (Screen 15, FR-59)
 // ============================================================================
-// Simulates seamless payment authorization (UPI, Cards, COD) and initiates
-// order placement with the core-service order engine.
+// Displays item total, demo notice, and executes order placement (FR-59).
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -22,7 +21,6 @@ class MockPaymentScreen extends StatefulWidget {
 
 class _MockPaymentScreenState extends State<MockPaymentScreen> {
   final _cart = CartService.instance;
-  String _paymentMethod = 'UPI';
   bool _isProcessing = false;
 
   Future<void> _processPayment() async {
@@ -85,8 +83,7 @@ class _MockPaymentScreenState extends State<MockPaymentScreen> {
       'distance_km': dist,
       'items': items,
       'subtotal': _cart.subtotal,
-      'delivery_fee': _cart.deliveryFee,
-      'total_price': _cart.grandTotal,
+      'total_price': _cart.subtotal,
       'created_at': DateTime.now().toIso8601String(),
     };
 
@@ -104,7 +101,10 @@ class _MockPaymentScreenState extends State<MockPaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final total = _cart.grandTotal;
+    final total = _cart.subtotal;
+    final totalFormatted = total.truncateToDouble() == total
+        ? total.toInt().toString()
+        : total.toStringAsFixed(2);
 
     return Scaffold(
       backgroundColor: FairDropColors.mintBg,
@@ -112,7 +112,7 @@ class _MockPaymentScreenState extends State<MockPaymentScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(
-          'Select Payment Method',
+          'Mock Payment',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 18,
             fontWeight: FontWeight.w800,
@@ -164,70 +164,25 @@ class _MockPaymentScreenState extends State<MockPaymentScreen> {
                               color: FairDropColors.brandGreen,
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 8),
                           Text(
-                            'Demo Sandbox Mode • Mock settlement simulation',
+                            'Demo payment. No money is charged.',
+                            key: const Key('demo_payment_notice'),
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                               color: FairDropColors.slateMuted,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-
-                    Text(
-                      'AVAILABLE PAYMENT METHODS',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: FairDropColors.slateMuted,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // ── Method 1: UPI ──────────────────────────────────────
-                    _buildPaymentOption(
-                      title: 'UPI (GPay / PhonePe / Paytm)',
-                      subtitle: 'Instant authorization simulation',
-                      icon: Icons.account_balance_wallet_rounded,
-                      value: 'UPI',
-                    ),
-                    const SizedBox(height: 10),
-
-                    // ── Method 2: Cards ────────────────────────────────────
-                    _buildPaymentOption(
-                      title: 'Credit / Debit Card',
-                      subtitle: 'Visa, Mastercard, RuPay',
-                      icon: Icons.credit_card_rounded,
-                      value: 'CARD',
-                    ),
-                    const SizedBox(height: 10),
-
-                    // ── Method 3: Net Banking ──────────────────────────────
-                    _buildPaymentOption(
-                      title: 'Net Banking',
-                      subtitle: 'SBI, HDFC, ICICI, Federal Bank',
-                      icon: Icons.account_balance_rounded,
-                      value: 'NETBANKING',
-                    ),
-                    const SizedBox(height: 10),
-
-                    // ── Method 4: COD ──────────────────────────────────────
-                    _buildPaymentOption(
-                      title: 'Cash on Delivery',
-                      subtitle: 'Pay cash to delivery partner at doorstep',
-                      icon: Icons.payments_rounded,
-                      value: 'COD',
-                    ),
                   ],
                 ),
               ),
             ),
 
-            // ── Pay Now Button ──────────────────────────────────────────────
+            // ── Place Order Button ──────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(16),
               color: Colors.white,
@@ -251,7 +206,7 @@ class _MockPaymentScreenState extends State<MockPaymentScreen> {
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            'Authorizing Order...',
+                            'Placing Order...',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
@@ -261,7 +216,7 @@ class _MockPaymentScreenState extends State<MockPaymentScreen> {
                         ],
                       )
                     : Text(
-                        'PAY NOW • ${formatCurrency(total)}',
+                        'Place Order (₹$totalFormatted)',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -269,87 +224,6 @@ class _MockPaymentScreenState extends State<MockPaymentScreen> {
                         ),
                       ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaymentOption({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required String value,
-  }) {
-    final isSelected = _paymentMethod == value;
-    final keySlug = 'payment_option_${value.toLowerCase()}';
-
-    return InkWell(
-      key: Key(keySlug),
-      onTap: () => setState(() => _paymentMethod = value),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? FairDropColors.brandGreen : FairDropColors.mintBorder,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: FairDropColors.brandGreen.withValues(alpha: 0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : FairDropColors.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? FairDropColors.brandGreen.withValues(alpha: 0.15)
-                    : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? FairDropColors.brandGreen : FairDropColors.slateMuted,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: FairDropColors.brandNavy,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      color: FairDropColors.slateMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-              color: isSelected ? FairDropColors.brandGreen : FairDropColors.slateMuted,
             ),
           ],
         ),

@@ -293,7 +293,7 @@ class _CartScreenState extends State<CartScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'BILL DETAILS & TRANSPARENT PAY',
+                                  'BILL DETAILS',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
@@ -303,17 +303,6 @@ class _CartScreenState extends State<CartScreen> {
                                 ),
                                 const SizedBox(height: 12),
                                 _buildBillRow('Item Subtotal', formatCurrency(_cart.subtotal)),
-                                const SizedBox(height: 8),
-                                _buildBillRow(
-                                  'Delivery Partner Fair Pay Fee',
-                                  formatCurrency(_cart.deliveryFee),
-                                  subtitle: '₹30 base + ₹10/km (${_cart.distanceKm.toStringAsFixed(1)} km straight-line)',
-                                  isHighlight: true,
-                                ),
-                                const SizedBox(height: 8),
-                                _buildBillRow('FairDrop Platform Fee', formatCurrency(_cart.platformFee)),
-                                const SizedBox(height: 8),
-                                _buildBillRow('Taxes & Packaging (5% GST)', formatCurrency(_cart.taxesAndCharges)),
                                 const Divider(height: 20, color: FairDropColors.mintBorder),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

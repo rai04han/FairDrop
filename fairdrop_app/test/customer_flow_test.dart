@@ -250,11 +250,11 @@ void main() {
       expect(find.text('Kerala Porotta'), findsOneWidget);
       expect(find.text('Nadan Chicken Curry'), findsOneWidget);
 
-      // Verify transparent bill breakdown items
+      // Verify transparent bill breakdown items (sum of item prices only, no fees)
       expect(find.text('Item Subtotal'), findsOneWidget);
-      expect(find.text('Delivery Partner Fair Pay Fee'), findsOneWidget);
-      expect(find.text('FairDrop Platform Fee'), findsOneWidget);
-      expect(find.text('Taxes & Packaging (5% GST)'), findsOneWidget);
+      expect(find.text('Delivery Partner Fair Pay Fee'), findsNothing);
+      expect(find.text('FairDrop Platform Fee'), findsNothing);
+      expect(find.text('Taxes & Packaging (5% GST)'), findsNothing);
       expect(find.text('TO PAY'), findsOneWidget);
 
       // Proceed to payment
@@ -265,7 +265,7 @@ void main() {
     });
 
     // ── Screen 15 (FR-59): Mock Payment Screen ──────────────────────────────
-    testWidgets('Screen 15: MockPaymentScreen selects payment method and executes checkout (FR-59)', (tester) async {
+    testWidgets('Screen 15: MockPaymentScreen displays demo payment notice and executes checkout (FR-59)', (tester) async {
       CartService.instance.setDeliveryLocation({
         'label': 'Pin A — Chinnakada',
         'latitude': 8.8932,
@@ -295,17 +295,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify title & payment methods
-      expect(find.text('Select Payment Method'), findsOneWidget);
-      expect(find.byKey(const Key('payment_option_upi')), findsOneWidget);
-      expect(find.byKey(const Key('payment_option_card')), findsOneWidget);
-      expect(find.byKey(const Key('payment_option_cod')), findsOneWidget);
+      // Verify title, amount, and demo notice
+      expect(find.text('Mock Payment'), findsOneWidget);
+      expect(find.byKey(const Key('payment_total_amount')), findsOneWidget);
+      expect(find.text('Demo payment. No money is charged.'), findsOneWidget);
+      expect(find.text('Place Order (₹25)'), findsOneWidget);
 
-      // Select Card option
-      await tester.tap(find.byKey(const Key('payment_option_card')));
-      await tester.pumpAndSettle();
-
-      // Tap Pay Now
+      // Tap Place Order
       expect(find.byKey(const Key('pay_now_button')), findsOneWidget);
       await tester.tap(find.byKey(const Key('pay_now_button')));
       await tester.pump(const Duration(milliseconds: 1500));
