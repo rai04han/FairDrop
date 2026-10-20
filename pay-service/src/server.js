@@ -36,8 +36,8 @@ app.use(cors());
 // ── Routes ─────────────────────────────────────────────────────────────────
 
 // Health check — verifies server is up and MySQL is reachable.
-// Useful for debugging during integration testing (Week 10).
-app.get('/api/health', async (req, res) => {
+// Accessible via both /health and /api/health.
+app.get(['/health', '/api/health'], async (req, res) => {
   try {
     await testConnection();
     return res.status(200).json({
@@ -68,6 +68,7 @@ app.use((req, res) => {
     error: 'Not found',
     message: `${req.method} ${req.originalUrl} is not a valid endpoint`,
     available_endpoints: [
+      'GET  /health',
       'GET  /api/health',
       'POST /api/pay/calculate',
       'GET  /api/pay/history/:rider_id',
