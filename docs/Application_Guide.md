@@ -124,7 +124,7 @@ mysql -u root -p < database/mysql/schema.sql
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=root123
+DB_PASSWORD=your_password_here
 DB_NAME=fairdrop_pay
 PORT=3001
 ```

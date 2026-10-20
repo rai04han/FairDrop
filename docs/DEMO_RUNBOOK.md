@@ -54,7 +54,8 @@ Ensure MySQL and both microservices are running:
 curl http://localhost:3003/api/health
 
 # 2. Health check pay-service (port 3001)
-curl http://localhost:3001/health
+curl http://localhost:3001/api/health
+# (Note: both /health and /api/health are supported)
 ```
 *Expected Response:* Both endpoints return HTTP `200 OK` with `{ "status": "ok" }` or `{ "status": "UP" }`.
 
@@ -191,13 +192,13 @@ All coordinates represent real-world locations in Kollam, Kerala:
   5. From the restaurant list, tap **"Hotel Arun"** (0.31 km away).
   6. Locate `Kerala Porotta Special`: notice the greyed-out card and **"UNAVAILABLE"** badge. Tap it to demonstrate that it cannot be added.
   7. Add **2x Chicken Biryani** (₹180 each) to the cart.
-  8. Tap **"View Cart (2 items)"**.
+  8. Tap **"VIEW CART"**.
 - **UI Highlights:**
   - Straight-line haversine distance (0.31 km) shown next to restaurant name (FR-70).
   - Unavailable item cannot be added (FR-57, Demo Step 3 defense).
-  - Cart itemizes Subtotal (₹360), Platform Fee (₹5), Delivery Fee (₹15), and GST.
+  - Cart itemizes pure food subtotal (₹360.00 for 2x Chicken Biryani @ ₹180) with zero customer delivery fee, zero platform fee, and zero GST per PRD v2.1.
 - **Speaker Narration:**
-  > *"Customer John selects Pin A inside Chinnakkada. Notice that 'Kerala Porotta Special' is visually disabled and cannot be added to the cart, preventing order cancellation frustration. We proceed with two Chicken Biryanis."*
+  > *"Customer John selects Pin A inside Chinnakkada. Notice that 'Kerala Porotta Special' is visually disabled and cannot be added to the cart, preventing order cancellation frustration. We proceed with two Chicken Biryanis at pure food cost with zero customer delivery fees or platform markups."*
 
 ---
 
@@ -205,12 +206,13 @@ All coordinates represent real-world locations in Kollam, Kerala:
 - **Device:** Physical Phone
 - **Screen:** Customer Cart & Mock Payment (`/customer/cart` → `/customer/payment`)
 - **Actions:**
-  1. On the Cart Screen, tap **"Proceed to Checkout"**.
-  2. On the Mock Payment Screen, select **"UPI / Instant Pay"**.
-  3. Tap **"Place Order (₹398)"**.
+  1. On the Cart Screen, tap **"PROCEED TO PAYMENT • ₹360.00"**.
+  2. On the Mock Payment Screen, note the food amount (₹360.00) and the explicit disclaimer: *"Demo payment. No money is charged."*
+  3. Tap **"Place Order (₹360.00)"**.
   4. Order Confirmation Screen loads immediately.
 - **UI Highlights:**
   - Sequential Order ID generated: `ORD-20261019-XXXX` (Counter model).
+  - Single transparent payment button: **"Place Order (₹360.00)"** with zero hidden fees.
   - Auto-accepted badge: **"Order Accepted by Kitchen"** (FR-67).
   - Allocation notice: **"Allocating nearest rider in KLM-CHK..."**
 - **Speaker Narration:**
@@ -220,11 +222,11 @@ All coordinates represent real-world locations in Kollam, Kerala:
 
 ### Step 5: Backend Auto-Allocation to Online Rider
 - **Device:** Android Emulator
-- **Screen:** Rider Home Screen (`/rider/home`)
+- **Screen:** Rider Home Screen (`/rider-home`)
 - **Actions:**
   1. Observe the Android Emulator screen. Within 3 seconds (polling interval), an incoming order bottom sheet slides up.
 - **UI Highlights:**
-  - Audio/vibration cue triggers.
+  - Incoming order notification sheet appears automatically.
   - Card displays Order ID, Pickup at Hotel Arun (Chinnakkada), Drop-off at Pin A, and distance (0.31 km).
   - Button: **"Review Order & Pay Formula"**.
 - **Speaker Narration:**
@@ -239,12 +241,12 @@ All coordinates represent real-world locations in Kollam, Kerala:
   1. Tap **"Review Order & Pay Formula"**.
   2. Point out the live formula parameters read from `pay-service`.
   3. Show the Guaranteed Minimum Payout breakdown.
-  4. Point out the **"Decline Without Penalty"** button (FR-15).
+  4. Point out the **"Decline (No Penalty)"** button (FR-15).
   5. Tap **"Accept Delivery"**.
 - **UI Highlights:**
-  - Transparent formula: `₹15.00 Base + ₹7.00/km + Surge + Wait Comp` (FR-11).
+  - Transparent formula: `Base + ₹6.00/km distance pay + Surge Bonus + ₹10.00 flat wait bonus if restaurant wait exceeds 1 min (credited on delivery)` (FR-11, FR-16).
   - Guaranteed estimated payout displayed clearly before acceptance (FR-13).
-  - Zero-penalty decline notice (FR-15).
+  - Zero-penalty decline button: **"Decline (No Penalty)"** (FR-15).
 - **Speaker Narration:**
   > *"This fulfills Fairwork Principle 4 (Fair Contracts) and PRD Goal 1. Unlike opaque black-box algorithms where riders accept orders blindly, FairDrop guarantees complete formula transparency before acceptance. Riders can also decline without fear of hidden shadow-bans or algorithmic penalties."*
 
@@ -279,7 +281,7 @@ All coordinates represent real-world locations in Kollam, Kerala:
   7. Confirm delivery completion in the popup dialog.
 - **UI Highlights:**
   - 4-stage visual stepper (`Heading` → `At Kitchen` → `Out for Delivery` → `Delivered`) (FR-17).
-  - Real-time wait timer with statutory warning: *"Wait threshold: 1 min. Over 1 min is compensated at ₹10.00/min."* (FR-18).
+  - Real-time wait timer with statutory policy notice: *"Wait threshold: 1 min. Over 1 min triggers +₹10.00 flat wait compensation bonus (credited on delivery)."* (FR-18).
   - Server records exact timestamps; client cannot tamper with wait minutes (D10).
 - **Speaker Narration:**
   > *"Uncompensated restaurant waiting time is one of the biggest grievances in gig delivery. Here, the rider arrived, waited over 1 minute for food packaging, and the server accurately recorded the elapsed wait. When the rider marks 'Delivered', core-service calls Raihan's Pay Engine on port 3001 using mutual JWT authentication."*
@@ -291,20 +293,21 @@ All coordinates represent real-world locations in Kollam, Kerala:
 - **Screen:** Delivery Summary Screen (`/delivery-summary`)
 - **Actions:**
   1. Screen opens automatically upon delivery completion.
-  2. Point out each of the 7 itemized lines in the ledger.
-  3. Highlight line 3: **Restaurant Wait Compensation = ₹10.00**.
-  4. Point out the zero-lines (Surge Bonus = ₹0.00, Delay Deduction = ₹0.00) with explicit explanation chips.
-  5. Tap **"Done — Back to Dashboard"**.
+  2. Point out each of the 7 itemized lines in the ledger (FR-21).
+  3. Highlight line 4: **Wait Compensation = ₹10.00** (> 1 min threshold).
+  4. Point out the zero-lines (Surge Bonus = ₹0.00) with explicit explanation chips.
+  5. Highlight line 5: **Floor Top-Up = ₹43.14** (statutory guarantee meeting ₹70.00/hr floor).
+  6. Tap **"Done — Back to Dashboard"**.
 - **UI Highlights:**
   - Full 7-line ledger breakdown (FR-21):
-    1. Base Pay: `₹15.00`
-    2. Distance Pay: `₹1.86` (0.31 km × ₹6/km)
-    3. Restaurant Wait Compensation: `₹10.00` (> 1 min threshold)
-    4. Surge Bonus: `₹0.00` (Off-surge hours)
-    5. Return Compensation: `₹0.00` (In-zone delivery)
-    6. Minimum Floor Top-up: `₹43.14` (Statutory ₹70/hr compliance)
-    7. Delay Deduction: `₹0.00` (On-time)
-  - Total Delivery Payout: **`₹70.00`** (Floor-compliant).
+    1. Base Rate: `₹15.00` (Standard dispatch fee)
+    2. Distance Pay: `₹1.86` (0.31 km × ₹6.00/km)
+    3. Surge Bonus: `₹0.00` (No surge active in zone)
+    4. Wait Compensation: `₹10.00` (Wait exceeded 1-min threshold: flat ₹10.00 bonus)
+    5. Floor Top-Up: `₹43.14` (Statutory shortfall top-up to meet ₹70.00/hr floor)
+    6. Total Delivery Pay: `₹26.86` (Base + Distance + Surge + Wait)
+    7. Effective Hourly Rate So Far: `₹70.00/hr` (Cumulative hourly rate after top-up)
+  - Total Payout Hero Card: **`₹70.00`** (Floor-compliant).
 - **Speaker Narration:**
   > *"Every single paisa is accounted for in this 7-item ledger (FR-21). Notice line 3: because the rider waited over 1 minute, ₹10.00 wait compensation was calculated by the Pay Engine. Furthermore, line 6 demonstrates statutory wage floor compliance under Kerala gig worker welfare standards."*
 
@@ -312,7 +315,7 @@ All coordinates represent real-world locations in Kollam, Kerala:
 
 ### Step 10: Rider Dashboard & Academic Pay Analytics
 - **Device:** Android Emulator
-- **Screen:** Rider Dashboard (`/rider/dashboard`) → Analytics (`/analytics`)
+- **Screen:** Rider Dashboard (`/rider-dashboard`) → Analytics (`/analytics`)
 - **Actions:**
   1. On the Rider Dashboard, pull down to refresh (`RefreshIndicator`).
   2. Show Today's Earnings Summary Card, Active Hours, and Floor Compliance badge.
@@ -372,7 +375,7 @@ All coordinates represent real-world locations in Kollam, Kerala:
 
 ### Step 13: Admin Pay Config & Mandatory 7-Day Advance Notice Enforcement
 - **Device:** Physical Phone
-- **Screen:** Admin Panel (`/admin/pay-config`)
+- **Screen:** Admin Panel (`/admin-panel`)
 - **Actions:**
   1. On Physical Phone, log out and log in as Admin: `admin@fairdrop.in` / `password123`.
   2. Active Pay Configuration is displayed (Base Rate: ₹15.00, Wait Threshold: 1 min).
@@ -400,7 +403,7 @@ All coordinates represent real-world locations in Kollam, Kerala:
 
 ### Step 14: Rider Logout & Offline Synchronization
 - **Device:** Android Emulator
-- **Screen:** Rider Profile & Home (`/rider/profile` → `/login`)
+- **Screen:** Rider Profile & Home (`/profile` → `/login`)
 - **Actions:**
   1. On the Emulator, tap **"Logout"**.
   2. A confirmation prompt confirms session closure.
@@ -418,10 +421,10 @@ All coordinates represent real-world locations in Kollam, Kerala:
 
 | Fairwork Principle | PRD Feature | Where Demonstrated | Status |
 |---|---|---|---|
-| **Fair Pay 1 (Minimum Wage Floor)** | Statutory ₹70/hr earnings floor | Step 9 (Ledger Line 6) & Step 10 (Dashboard compliance card) | **LIVE UI** |
+| **Fair Pay 1 (Minimum Wage Floor)** | Statutory ₹70/hr earnings floor | Step 9 (Ledger Line 5) & Step 10 (Dashboard compliance card) | **LIVE UI** |
 | **Fair Pay 2 (Living Wage)** | Configurable wage constants | Step 13 (Admin pay configuration) | **LIVE UI** |
 | **Fair Conditions 1 (Safety Onboarding)** | Safety checklist & equipment acknowledgment | Step 1 (Rider Signup & Onboarding) | **LIVE UI** |
-| **Fair Conditions 2 (Wait & Return Compensation)** | ₹10/min wait compensation & out-of-zone hub reassignment | Step 8 (Timer), Step 9 (Ledger Line 3), Step 11 (Zone Map) | **LIVE UI** |
+| **Fair Conditions 2 (Wait & Return Compensation)** | ₹10 flat wait compensation & out-of-zone hub reassignment | Step 8 (Timer), Step 9 (Ledger Line 4), Step 11 (Zone Map) | **LIVE UI** |
 | **Fair Contracts 1 (Transparent Policy)** | Upfront pay formula & itemized ledger | Step 6 (Order Acceptance) & Step 9 (Delivery Summary) | **LIVE UI** |
 | **Fair Contracts 2 (7-Day Notice & Reason)** | 7-day advance notice validation & mandatory audit reason | Step 13 (Admin Panel 6-day rejection / 8-day acceptance) | **LIVE UI** |
 | **Fair Management 1 (Delay Challenge)** | Delay reporting with verified status badge | Step 8 (Delay dialog) & Step 9 (Verified badge) | **LIVE UI** |
