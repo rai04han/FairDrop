@@ -18,7 +18,16 @@ import '../services/core_api_service.dart';
 import '../services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final Map<String, dynamic>? initialUser;
+  final Map<String, dynamic>? initialUpcomingConfig;
+  final bool autoFetch;
+
+  const ProfileScreen({
+    super.key,
+    this.initialUser,
+    this.initialUpcomingConfig,
+    this.autoFetch = true,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -33,7 +42,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    if (widget.initialUser != null || widget.initialUpcomingConfig != null) {
+      _user = widget.initialUser;
+      _upcomingConfig = widget.initialUpcomingConfig;
+      _isLoading = false;
+    } else if (widget.autoFetch) {
+      _loadProfile();
+    } else {
+      _isLoading = false;
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -47,14 +64,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       Map<String, dynamic>? upcoming;
       try {
-        final historyData = await ApiService.getConfigHistory();
-        final configs = historyData['configs'] as List<dynamic>? ?? [];
-        final now = DateTime.now();
-        for (final c in configs) {
-          final effDate = DateTime.tryParse(c['effective_from']?.toString() ?? '');
-          if (effDate != null && effDate.isAfter(now)) {
-            upcoming = c as Map<String, dynamic>;
-            break;
+        final configData = await ApiService.getPayConfig();
+        if (configData['scheduled'] != null && configData['scheduled'] is Map) {
+          upcoming = Map<String, dynamic>.from(configData['scheduled'] as Map);
+        } else {
+          final historyData = await ApiService.getConfigHistory();
+          final configs = (historyData['history'] ?? historyData['configs']) as List<dynamic>? ?? [];
+          final now = DateTime.now();
+          for (final c in configs) {
+            final effDate = DateTime.tryParse(c['effective_from']?.toString() ?? '');
+            if (effDate != null && effDate.isAfter(now)) {
+              upcoming = Map<String, dynamic>.from(c as Map);
+              break;
+            }
           }
         }
       } catch (_) {
@@ -169,8 +191,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Icon(Icons.check_circle_rounded, color: FairDropColors.brandGreen, size: 18),
           const SizedBox(width: 8),
           Expanded(
-            child: RichText(
-              text: TextSpan(
+            child: Text.rich(
+              TextSpan(
                 style: GoogleFonts.plusJakartaSans(color: FairDropColors.brandNavy, fontSize: 13),
                 children: [
                   TextSpan(text: '$title: ', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -379,38 +401,128 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Padding(
                         padding: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
                         child: Container(
-                          padding: const EdgeInsets.all(14),
+                          key: const Key('upcoming_pay_change_banner'),
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: FairDropColors.brandOrange.withValues(alpha: 0.1),
+                            color: const Color(0xFFFFFBEB),
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: FairDropColors.brandOrange.withValues(alpha: 0.3)),
+                            border: Border.all(color: FairDropColors.warningAmber.withValues(alpha: 0.5)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: FairDropColors.warningAmber.withValues(alpha: 0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.announcement_rounded, color: FairDropColors.brandOrange),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Scheduled Rate Card Update',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 13,
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: FairDropColors.warningAmber.withValues(alpha: 0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.campaign_rounded, color: Color(0xFFB45309), size: 20),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Upcoming Pay Revision',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w800,
+                                            color: const Color(0xFF92400E),
+                                          ),
+                                        ),
+                                        Text(
+                                          _formatEffectiveDateNotice(_upcomingConfig!['effective_from']),
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: const Color(0xFFB45309),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFEF3C7),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFFF59E0B)),
+                                    ),
+                                    child: const Text(
+                                      '7-Day Notice',
+                                      style: TextStyle(
+                                        fontSize: 10,
                                         fontWeight: FontWeight.w800,
-                                        color: FairDropColors.brandOrange,
+                                        color: Color(0xFF92400E),
                                       ),
                                     ),
-                                    Text(
-                                      'Effective in 7 days. Kerala statutory floor guarantees intact.',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              // Rates breakdown preview
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFFFDE68A)),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        _rateChip('Base Fare', '₹${double.tryParse(_upcomingConfig!['base_rate']?.toString() ?? '15')?.toStringAsFixed(2) ?? '15.00'}'),
+                                        _rateChip('Per Km', '₹${double.tryParse(_upcomingConfig!['per_km_rate']?.toString() ?? '7')?.toStringAsFixed(2) ?? '7.00'}/km'),
+                                        _rateChip('Wait Comp', '₹${double.tryParse(_upcomingConfig!['wait_compensation']?.toString() ?? '2')?.toStringAsFixed(2) ?? '2.00'}/m'),
+                                        _rateChip('Min Floor', '₹${double.tryParse(_upcomingConfig!['min_wage_per_hour']?.toString() ?? '87.50')?.toStringAsFixed(0) ?? '88'}/hr'),
+                                      ],
+                                    ),
+                                    if ((_upcomingConfig!['change_reason'] ?? '').toString().trim().isNotEmpty) ...[
+                                      const Divider(height: 14, color: Color(0xFFFEF3C7)),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Reason: "${_upcomingConfig!['change_reason']}"',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 11,
+                                            fontStyle: FontStyle.italic,
+                                            color: const Color(0xFF78350F),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  const Icon(Icons.shield_outlined, size: 14, color: FairDropColors.brandGreen),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Fairwork Principle 2: Statutory 7-day advance notice & wage transparency.',
                                       style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
                                         color: FairDropColors.slateMuted,
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -433,12 +545,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 10),
 
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: FairDropColors.cardShadow,
-                            ),
+                          Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            elevation: 1,
+                            shadowColor: const Color(0x1416804B),
+                            clipBehavior: Clip.antiAlias,
                             child: Column(
                               children: [
                                 _buildMenuItem(
@@ -546,34 +658,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return ListTile(
-      onTap: onTap,
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: FairDropColors.mintBg,
-          borderRadius: BorderRadius.circular(10),
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        onTap: onTap,
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: FairDropColors.mintBg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: FairDropColors.brandGreen, size: 20),
         ),
-        child: Icon(icon, color: FairDropColors.brandGreen, size: 20),
-      ),
-      title: Text(
-        title,
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: FairDropColors.brandNavy,
+        title: Text(
+          title,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: FairDropColors.brandNavy,
+          ),
         ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.plusJakartaSans(
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: FairDropColors.slateMuted,
+        subtitle: Text(
+          subtitle,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: FairDropColors.slateMuted,
+          ),
         ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 20),
       ),
-      trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 20),
+    );
+  }
+
+  String _formatEffectiveDateNotice(dynamic effFrom) {
+    if (effFrom == null) return 'Scheduled for upcoming rollout';
+    try {
+      final effDate = DateTime.parse(effFrom.toString().split('T').first);
+      final today = DateTime.now();
+      final diffDays = effDate.difference(DateTime(today.year, today.month, today.day)).inDays;
+      final dateStr = '${effDate.day.toString().padLeft(2, '0')}/${effDate.month.toString().padLeft(2, '0')}/${effDate.year}';
+      if (diffDays > 0) {
+        return 'Takes effect in $diffDays days ($dateStr)';
+      } else if (diffDays == 0) {
+        return 'Takes effect today ($dateStr)';
+      } else {
+        return 'Effective since $dateStr';
+      }
+    } catch (_) {
+      return 'Effective: $effFrom';
+    }
+  }
+
+  Widget _rateChip(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: FairDropColors.brandNavy,
+          ),
+        ),
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10,
+            color: FairDropColors.slateMuted,
+          ),
+        ),
+      ],
     );
   }
 }

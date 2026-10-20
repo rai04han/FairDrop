@@ -193,44 +193,57 @@ class _CustomerShellScreenState extends State<CustomerShellScreen> {
                     const SizedBox(height: 20),
 
                     // ── Secondary Action: Order History ───────────────────────
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: FairDropColors.cardShadow,
-                        border: Border.all(color: FairDropColors.mintBorder),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.history_rounded,
-                                color: FairDropColors.brandNavy,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Order History',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
+                    InkWell(
+                      key: const Key('customer_order_history_button'),
+                      onTap: () {
+                        Navigator.pushNamed(context, '/customer/history');
+                      },
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: FairDropColors.cardShadow,
+                          border: Border.all(color: FairDropColors.mintBorder),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.history_rounded,
                                   color: FairDropColors.brandNavy,
+                                  size: 24,
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Track placed orders, delivery status, and verification history.',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              color: FairDropColors.slateMuted,
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Order History',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: FairDropColors.brandNavy,
+                                  ),
+                                ),
+                                const Spacer(),
+                                const Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  color: FairDropColors.slateMuted,
+                                  size: 16,
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 12),
+                            Text(
+                              'Track placed orders, delivery status, and verification history.',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                color: FairDropColors.slateMuted,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],

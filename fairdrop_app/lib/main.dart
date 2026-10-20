@@ -51,6 +51,7 @@ import 'screens/customer/order_confirmation_screen.dart';// Screen 16 (FR-60)
 import 'screens/restaurant/menu_management_screen.dart'; // Screen 17 (FR-62, FR-64)
 import 'screens/restaurant/add_edit_menu_item_screen.dart'; // Screen 18 (FR-63)
 import 'screens/restaurant/restaurant_orders_screen.dart'; // Screen 19 (FR-65, FR-66, FR-69)
+import 'screens/customer/customer_order_history_screen.dart'; // Screen 22 (FR-61)
 import 'services/core_api_service.dart';
 
 // ============================================================================
@@ -118,6 +119,7 @@ class FairDropApp extends StatelessWidget {
         '/customer/cart':                (context) => const CartScreen(),
         '/customer/payment':             (context) => const MockPaymentScreen(),
         '/customer/order-confirmation':  (context) => const OrderConfirmationScreen(),
+        '/customer/history':             (context) => const CustomerOrderHistoryScreen(),
         '/restaurant':                   (context) => const RestaurantShellScreen(),
         '/restaurant/menu':              (context) => const MenuManagementScreen(),
         '/restaurant/menu/add':          (context) => const AddEditMenuItemScreen(),
