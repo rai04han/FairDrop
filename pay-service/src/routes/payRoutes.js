@@ -78,10 +78,10 @@ router.post('/riders', async (req, res) => {
     }
 
     await pool.execute(
-      `INSERT INTO riders (rider_id, name, is_active)
-       VALUES (?, ?, TRUE)
+      `INSERT INTO riders (rider_id, name, phone, zone_id, is_active)
+       VALUES (?, ?, ?, ?, TRUE)
        ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = TRUE`,
-      [rider_id, name || 'Rider']
+      [rider_id, name || 'Rider', req.body.phone || '0000000000', req.body.zone_id || 'KLM-CHK']
     );
 
     return res.status(201).json({
@@ -130,8 +130,8 @@ router.post('/calculate', async (req, res) => {
 
     // ── Step 2: Ensure rider exists in MySQL (upsert if missing) ───────
     await pool.execute(
-      `INSERT INTO riders (rider_id, name, is_active)
-       VALUES (?, 'Rider', TRUE)
+      `INSERT INTO riders (rider_id, name, phone, zone_id, is_active)
+       VALUES (?, 'Rider', '0000000000', 'KLM-CHK', TRUE)
        ON DUPLICATE KEY UPDATE is_active = TRUE`,
       [rider_id]
     );
@@ -347,8 +347,8 @@ router.get('/analytics/:rider_id', async (req, res) => {
 
     // Ensure rider row exists
     await pool.execute(
-      `INSERT INTO riders (rider_id, name, is_active)
-       VALUES (?, 'Rider', TRUE)
+      `INSERT INTO riders (rider_id, name, phone, zone_id, is_active)
+       VALUES (?, 'Rider', '0000000000', 'KLM-CHK', TRUE)
        ON DUPLICATE KEY UPDATE is_active = TRUE`,
       [rider_id]
     );
