@@ -119,11 +119,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(minimumSize: Size.zero),
             child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: FairDropColors.errorRed),
+            style: FilledButton.styleFrom(
+              minimumSize: Size.zero,
+              backgroundColor: FairDropColors.errorRed,
+            ),
             child: const Text('Log Out'),
           ),
         ],

@@ -20,6 +20,7 @@
 | **F7** | Remove fallback pay constants on order acceptance screen; gate accept button on `_hasValidPayConfig`; add retry button on error banner | **FIXED** | `9f2c014` | `fairdrop_app/lib/screens/order_acceptance_screen.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 99/99 passed |
 | **F8** | Remove fallback mock data on network error in rider dashboard & analytics screens; display error banner with Retry; guard division-by-zero for riders with 0 deliveries | **FIXED** | `c872c08` | `fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 103/103 passed (4 new widget tests passing) |
 | **F9** | Remove plaintext password in docs/Application_Guide.md; fix `items_total` log string in e2e-smoke.js; align docs/DEMO_RUNBOOK.md routes and fees | **FIXED** | `064b38f` | `docs/Application_Guide.md`<br>`scripts/e2e-smoke.js`<br>`docs/DEMO_RUNBOOK.md` | `npm run seed; npm run smoke`: 14/14 steps passed; `items_total` logged as ₹360; documentation aligned with PRD v2.1 |
+| **F10** | Add local `minimumSize: Size.zero` to buttons in Rows & AlertDialogs; raise API timeouts to 8s with Retry banner; prevent layout exceptions at 360px & 393px (R3/R4/R5) | **FIXED** | *Pending Commit* | `fairdrop_app/lib/screens/customer/restaurant_menu_screen.dart`<br>`fairdrop_app/lib/screens/customer/restaurant_list_screen.dart`<br>`fairdrop_app/lib/screens/restaurant/menu_management_screen.dart`<br>`fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/lib/screens/profile_screen.dart`<br>`fairdrop_app/lib/screens/grievance_screen.dart`<br>`fairdrop_app/test/layout_responsive_test.dart` | `flutter analyze`: No issues found;<br>`flutter test test/layout_responsive_test.dart`: 8/8 passed;<br>`flutter test test/customer_flow_test.dart`: 7/7 passed;<br>Zero layout exceptions at 360px and 393px |
 
 ---
 
@@ -37,6 +38,18 @@
    - Added widget test: `AnalyticsScreen shows error banner with retry button on failure without mock numbers`.
    - Added widget test: `RiderDashboardScreen displays clean zeros for new rider with 0 deliveries`.
    - Added widget test: `AnalyticsScreen displays clean zeros for new rider with 0 deliveries`.
+5. **`fairdrop_app/test/layout_responsive_test.dart` (F10):**
+   - Added responsive widget test for `RestaurantMenuScreen` at 360px & 393px width (verifies 1-line price, visible ADD button, sticky cart VIEW CART button without layout exception).
+   - Added responsive widget test for `MenuManagementScreen` at 360px & 393px width (verifies 1-line heading and ADD ITEM button).
+   - Added responsive widget test for AlertDialog action buttons with `minimumSize: Size.zero` in `AdminPanelScreen`, `ProfileScreen`, and `GrievanceScreen`.
+   - Added widget test for `RestaurantListScreen` 8s timeout and error banner with Retry button.
+   - Added widget test for `RestaurantMenuScreen` 8s timeout and error banner with Retry button.
+
+### Root Cause Analysis: Blank Screen on Physical Android Phone vs. Chrome (R3/R4/R5)
+1. **Unbounded Flex Constraints from Global Theme**: In `lib/config/theme.dart`, `filledButtonTheme` specified `minimumSize: const Size.fromHeight(52)` and `outlinedButtonTheme` specified `minimumSize: const Size.fromHeight(48)`. In Flutter, `Size.fromHeight(h)` evaluates to `Size(double.infinity, h)`. When buttons were used inside unconstrained horizontal flex layouts (`Row` or `AlertDialog.actions`), the buttons demanded infinite width, causing Flutter's layout engine to throw an unhandled assertion exception (`BoxConstraints forces an infinite width`).
+2. **Platform Difference (Android Release/Profile vs. Chrome Web)**: On a physical Android device in profile/release mode, an unhandled layout assertion in a widget subtree causes Flutter's release `ErrorWidget` to render a blank grey/white screen, aborting the rendering pipeline. In Chrome (desktop browser), developers/testers ran at wide viewports (1200px+) and widget unit tests in `customer_flow_test.dart` instantiated `MaterialApp` without the app's `FairDropTheme.lightTheme`, completely masking the infinite width theme constraint.
+3. **Wi-Fi Network Timeout & Silent Mock Fallback**: In `restaurant_menu_screen.dart` (~L83) and `restaurant_list_screen.dart` (~L77), HTTP calls used a 1-second timeout. Over physical Wi-Fi, network latency routinely exceeded 1.0s, triggering immediate timeouts. The code caught the error and silently loaded hardcoded static fallback items, which then immediately hit the infinite-width button layout crash.
+
 
 ---
 

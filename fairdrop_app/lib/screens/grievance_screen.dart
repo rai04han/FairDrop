@@ -197,6 +197,7 @@ class _GrievanceScreenState extends State<GrievanceScreen> {
               Navigator.pop(context);
             },
             style: FilledButton.styleFrom(
+              minimumSize: Size.zero,
               backgroundColor: FairDropColors.brandGreen,
               shape: const StadiumBorder(),
             ),

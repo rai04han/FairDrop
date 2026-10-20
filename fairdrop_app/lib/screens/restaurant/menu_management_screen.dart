@@ -218,6 +218,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 children: [
                                   Text(
                                     'KITCHEN DISHES (${_items.length})',
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.ellipsis,
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w800,
@@ -252,6 +255,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 ),
                               ),
                               style: FilledButton.styleFrom(
+                                minimumSize: Size.zero,
                                 backgroundColor: FairDropColors.brandGreen,
                                 shape: const StadiumBorder(),
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -364,7 +368,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                           const Icon(Icons.timer_outlined, size: 12, color: FairDropColors.slateMuted),
                                                           const SizedBox(width: 4),
                                                           Text(
-                                                            '${(item.prepTimeSeconds / 60).round()} mins (${item.prepTimeSeconds}s)',
+                                                            '${(item.prepTimeSeconds / 60).round()} mins',
                                                             style: GoogleFonts.plusJakartaSans(
                                                               fontSize: 11,
                                                               fontWeight: FontWeight.w600,

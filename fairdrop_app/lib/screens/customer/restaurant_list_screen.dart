@@ -24,42 +24,8 @@ class RestaurantListScreen extends StatefulWidget {
 class _RestaurantListScreenState extends State<RestaurantListScreen> {
   List<Map<String, dynamic>> _restaurants = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
-  // Fallback seeded restaurants in Kollam (PRD §10.1 & seed.js)
-  static final List<Map<String, dynamic>> _fallbackRestaurants = [
-    {
-      'id': '67b7e0000000000000000003',
-      '_id': '67b7e0000000000000000003',
-      'name': 'Hotel Arun',
-      'email': 'arun@fairdrop.in',
-      'cuisine': 'Kerala Specials • South Indian • Seafood',
-      'rating': 4.8,
-      'est_time': '20–25 mins',
-      'address': {
-        'name': 'Hotel Arun, Chinnakada',
-        'label': 'Hotel Arun, Chinnakada, Kollam',
-        'latitude': 8.8870,
-        'longitude': 76.5900,
-        'zone_id': 'KLM-CHK',
-      },
-    },
-    {
-      'id': '67b7e0000000000000000004',
-      '_id': '67b7e0000000000000000004',
-      'name': 'Marina Grill',
-      'email': 'marina@fairdrop.in',
-      'cuisine': 'Coastal Grills • Biryani • Seafood',
-      'rating': 4.7,
-      'est_time': '25–30 mins',
-      'address': {
-        'name': 'Marina Grill, Kollam Beach',
-        'label': 'Marina Grill, Kollam Beach Road, Kollam',
-        'latitude': 8.8780,
-        'longitude': 76.5820,
-        'zone_id': 'KLM-CHK',
-      },
-    },
-  ];
 
   @override
   void initState() {
@@ -73,10 +39,13 @@ class _RestaurantListScreenState extends State<RestaurantListScreen> {
   }
 
   Future<void> _loadRestaurants() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
       final res = await CoreApiService.getRestaurants().timeout(
-        const Duration(seconds: 1),
-        onTimeout: () => {},
+        const Duration(seconds: 8),
       );
       final list = res['restaurants'] as List<dynamic>?;
       if (list != null && list.isNotEmpty && mounted) {
@@ -85,14 +54,22 @@ class _RestaurantListScreenState extends State<RestaurantListScreen> {
           _isLoading = false;
         });
         return;
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'No restaurants available at this time.';
+            _isLoading = false;
+          });
+        }
+        return;
       }
-    } catch (_) {}
-
-    if (mounted) {
-      setState(() {
-        _restaurants = _fallbackRestaurants;
-        _isLoading = false;
-      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Unable to load restaurants. Please check your connection and try again.';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -164,7 +141,9 @@ class _RestaurantListScreenState extends State<RestaurantListScreen> {
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: FairDropColors.brandGreen))
-            : RefreshIndicator(
+            : _errorMessage != null
+                ? _buildErrorView()
+                : RefreshIndicator(
                 onRefresh: _loadRestaurants,
                 color: FairDropColors.brandGreen,
                 child: ListView.separated(
@@ -302,6 +281,43 @@ class _RestaurantListScreenState extends State<RestaurantListScreen> {
                   },
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      key: const Key('restaurant_list_error_banner'),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline_rounded, size: 48, color: FairDropColors.errorRed),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage ?? 'Unable to load restaurants',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: FairDropColors.brandNavy,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              key: const Key('retry_restaurant_list_button'),
+              onPressed: _loadRestaurants,
+              style: FilledButton.styleFrom(
+                minimumSize: Size.zero,
+                backgroundColor: FairDropColors.brandGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }

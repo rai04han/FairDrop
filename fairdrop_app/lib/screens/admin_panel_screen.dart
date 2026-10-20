@@ -358,12 +358,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         ),
         actions: [
           TextButton(
+            style: TextButton.styleFrom(minimumSize: Size.zero),
             onPressed: () => Navigator.pop(dialogCtx),
             child: const Text('Cancel'),
           ),
           FilledButton.icon(
             key: const Key('admin_confirm_diff_button'),
-            style: FilledButton.styleFrom(backgroundColor: FairDropColors.brandGreen),
+            style: FilledButton.styleFrom(
+              minimumSize: Size.zero,
+              backgroundColor: FairDropColors.brandGreen,
+            ),
             onPressed: () {
               Navigator.pop(dialogCtx);
               _executeConfigUpdate();

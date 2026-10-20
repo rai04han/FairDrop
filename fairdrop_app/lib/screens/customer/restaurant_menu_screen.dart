@@ -27,42 +27,8 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
   Map<String, dynamic>? _restaurant;
   List<MenuItem> _items = [];
   bool _isLoading = true;
+  String? _errorMessage;
 
-  // Fallback demo menu for Hotel Arun (PRD §10.1 & seed.js)
-  static final List<MenuItem> _fallbackHotelArunMenu = [
-    MenuItem(
-      id: 'menu-item-1',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Kerala Parotta (2 pcs)',
-      price: 30.0,
-      prepTimeSeconds: 180,
-      isAvailable: true,
-    ),
-    MenuItem(
-      id: 'menu-item-2',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Malabar Chicken Biryani',
-      price: 160.0,
-      prepTimeSeconds: 600,
-      isAvailable: true,
-    ),
-    MenuItem(
-      id: 'menu-item-3',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Karimeen Pollichathu (Seafood)',
-      price: 240.0,
-      prepTimeSeconds: 720,
-      isAvailable: true,
-    ),
-    MenuItem(
-      id: 'menu-item-4',
-      restaurantId: '67b7e0000000000000000003',
-      name: 'Appam with Vegetable Stew',
-      price: 80.0,
-      prepTimeSeconds: 240,
-      isAvailable: false, // Unavailable test item for Demo Step 3 (FR-57)
-    ),
-  ];
 
   @override
   void initState() {
@@ -77,12 +43,15 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
   }
 
   Future<void> _loadMenu() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     final restId = (_restaurant?['id'] ?? _restaurant?['_id'])?.toString();
     if (restId != null) {
       try {
         final res = await CoreApiService.getRestaurantMenu(restId).timeout(
-          const Duration(seconds: 1),
-          onTimeout: () => {},
+          const Duration(seconds: 8),
         );
         final list = res['items'] as List<dynamic>?;
         if (list != null && list.isNotEmpty && mounted) {
@@ -91,13 +60,29 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
             _isLoading = false;
           });
           return;
+        } else {
+          if (mounted) {
+            setState(() {
+              _errorMessage = 'No menu items available for this restaurant.';
+              _isLoading = false;
+            });
+          }
+          return;
         }
-      } catch (_) {}
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Unable to load restaurant menu. Please check your connection and try again.';
+            _isLoading = false;
+          });
+        }
+        return;
+      }
     }
 
     if (mounted) {
       setState(() {
-        _items = _fallbackHotelArunMenu;
+        _errorMessage = 'Restaurant not found.';
         _isLoading = false;
       });
     }
@@ -219,7 +204,9 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: FairDropColors.brandGreen))
-                  : ListView.separated(
+                  : _errorMessage != null
+                      ? _buildErrorView()
+                      : ListView.separated(
                       padding: const EdgeInsets.all(16),
                       itemCount: _items.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 12),
@@ -277,6 +264,9 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
                                     const SizedBox(height: 6),
                                     Text(
                                       formatCurrency(item.price),
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w800,
@@ -327,6 +317,7 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
                                   key: Key('add_item_button_$slug'),
                                   onPressed: () => _addItem(item),
                                   style: OutlinedButton.styleFrom(
+                                    minimumSize: Size.zero,
                                     side: const BorderSide(color: FairDropColors.brandGreen, width: 1.5),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
@@ -423,6 +414,7 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
                       key: const Key('view_cart_button'),
                       onPressed: () => Navigator.pushNamed(context, '/customer/cart'),
                       style: FilledButton.styleFrom(
+                        minimumSize: Size.zero,
                         backgroundColor: FairDropColors.brandGreen,
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                         shape: const StadiumBorder(),
@@ -440,6 +432,43 @@ class _RestaurantMenuScreenState extends State<RestaurantMenuScreen> {
                   ],
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      key: const Key('menu_error_banner'),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline_rounded, size: 48, color: FairDropColors.errorRed),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage ?? 'Unable to load menu',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: FairDropColors.brandNavy,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              key: const Key('retry_menu_button'),
+              onPressed: _loadMenu,
+              style: FilledButton.styleFrom(
+                minimumSize: Size.zero,
+                backgroundColor: FairDropColors.brandGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry'),
+            ),
           ],
         ),
       ),
