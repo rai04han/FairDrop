@@ -33,16 +33,23 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   bool _isTogglingStatus = false;
   Timer? _pollTimer;
   Timer? _countdownTimer;
-  int _secondsLeft = 45;
+  int _secondsLeft = 0;
   String? _homeDataError;
 
-  // Today's stats
-  double _todayEarnings = 685.0;
-  double _activeHoursToday = 4.25;
-  double _hourlyRate = 162.0;
+  // Today's stats (real values from backend, default zeros for new rider)
+  double _todayEarnings = 0.0;
+  double _activeHoursToday = 0.0;
+  double _hourlyRate = 0.0;
   double? _floorValue;
-  int _deliveriesToday = 7;
+  int _deliveriesToday = 0;
   String _currentZone = 'Chinnakada & Asramam (KL-02)';
+
+  // Pay config rates (default baseline Kerala parameters)
+  double _baseRate = 30.0;
+  double _perKmRate = 6.0;
+  double _waitCompensation = 10.0;
+  int _waitThresholdMins = 10;
+  double _surgeBonus = 15.0;
 
   // Active incoming order (if assigned)
   Map<String, dynamic>? _incomingOrder;
@@ -66,7 +73,6 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     }
     _loadStats();
     _startPolling();
-    _startCountdown();
   }
 
   @override
@@ -76,15 +82,18 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     super.dispose();
   }
 
-  void _startCountdown() {
+  void _startCountdown(Map<String, dynamic> order) {
     _countdownTimer?.cancel();
+    _secondsLeft = 45;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
       setState(() {
         if (_secondsLeft > 0) {
           _secondsLeft--;
         } else {
-          _secondsLeft = 45; // loop for demo glanceability
+          // Offer window elapsed
+          _countdownTimer?.cancel();
+          _incomingOrder = null;
         }
       });
     });
@@ -101,9 +110,20 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       final data = await CoreApiService.getRiderActiveOrder();
       final order = data['order'] as Map<String, dynamic>?;
 
-      if (order != null && mounted) {
+      if (mounted) {
         setState(() {
+          final prevId = _incomingOrder?['order_id'] ?? _incomingOrder?['id'];
+          final newId = order?['order_id'] ?? order?['id'];
           _incomingOrder = order;
+
+          if (order != null) {
+            if (prevId != newId || _countdownTimer == null || !_countdownTimer!.isActive) {
+              _startCountdown(order);
+            }
+          } else {
+            _countdownTimer?.cancel();
+            _secondsLeft = 0;
+          }
         });
       }
     } catch (_) {
@@ -119,18 +139,24 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       final configData = await ApiService.getPayConfig();
       final config = configData['config'] as Map<String, dynamic>? ?? {};
 
-      setState(() {
-        final earnings = (stats['total_earnings_today'] as num?)?.toDouble() ?? 0;
-        final hours = (stats['active_hours_today'] as num?)?.toDouble() ?? 0;
-        if (earnings > 0) _todayEarnings = earnings;
-        if (hours > 0) _activeHoursToday = hours;
-        _deliveriesToday = (stats['deliveries_today'] as num?)?.toInt() ?? _deliveriesToday;
-        _currentZone = stats['current_zone'] as String? ?? 'Chinnakada & Asramam (KL-02)';
-        _hourlyRate = _activeHoursToday > 0 ? _todayEarnings / _activeHoursToday : 162.0;
-        _floorValue = double.tryParse(config['min_wage_per_hour']?.toString() ?? '');
-      });
+      if (mounted) {
+        setState(() {
+          _todayEarnings = (stats['total_earnings_today'] as num?)?.toDouble() ?? 0.0;
+          _activeHoursToday = (stats['active_hours_today'] as num?)?.toDouble() ?? 0.0;
+          _deliveriesToday = (stats['deliveries_today'] as num?)?.toInt() ?? 0;
+          _currentZone = stats['current_zone'] as String? ?? 'Chinnakada & Asramam (KL-02)';
+          _hourlyRate = (stats['hourly_rate'] as num?)?.toDouble() ??
+              (_activeHoursToday > 0 ? _todayEarnings / _activeHoursToday : 0.0);
+          _floorValue = double.tryParse(config['min_wage_per_hour']?.toString() ?? '');
+          _baseRate = double.tryParse(config['base_rate']?.toString() ?? '') ?? 30.0;
+          _perKmRate = double.tryParse(config['per_km_rate']?.toString() ?? '') ?? 6.0;
+          _waitCompensation = double.tryParse(config['wait_compensation']?.toString() ?? '') ?? 10.0;
+          _waitThresholdMins = int.tryParse(config['wait_threshold_mins']?.toString() ?? '') ?? 10;
+          _surgeBonus = double.tryParse(config['surge_bonus']?.toString() ?? '') ?? 15.0;
+        });
+      }
     } catch (_) {
-      // Keep defaults
+      // Keep real values (zeros for new rider)
     }
   }
 
@@ -175,21 +201,13 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   }
 
   void _acceptOffer(Map<String, dynamic>? order) {
+    if (order == null) return;
     _pollTimer?.cancel();
+    _countdownTimer?.cancel();
     Navigator.pushNamed(
       context,
       '/order-acceptance',
-      arguments: order ?? {
-        'order_id': 'FD-8821',
-        'pickup_address': 'Supreme Bakers, Chinnakada',
-        'delivery_address': 'Kadappakkada Junction',
-        'distance_km': 3.8,
-        'base_pay': 30.0,
-        'distance_pay': 38.0,
-        'surge_bonus': 15.0,
-        'wait_buffer': 9.0,
-        'guaranteed_payout': 92.0,
-      },
+      arguments: order,
     );
   }
 
@@ -316,7 +334,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                       const SizedBox(height: 16),
 
                       // 2. Incoming Order Alert Card (Urgent, High-Contrast Dispatch Card)
-                      if (_isOnline) ...[
+                      if (_isOnline && _incomingOrder != null) ...[
                         _buildIncomingOrderCard(),
                         const SizedBox(height: 16),
                       ],
@@ -361,56 +379,66 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
       child: Row(
         children: [
           // Brand & Zone Badge
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  const FairDropLogo(fontSize: 22),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: FairDropColors.brandGreen.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      'KL-02',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: FairDropColors.brandGreen,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const FairDropLogo(fontSize: 18),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: FairDropColors.brandGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          'KL-02',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: FairDropColors.brandGreen,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: _isOnline ? FairDropColors.brandGreen : FairDropColors.slateMuted,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: _isOnline ? FairDropColors.brandGreen : FairDropColors.slateMuted,
-                      shape: BoxShape.circle,
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        _currentZone,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: FairDropColors.slateMuted,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    _currentZone,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: FairDropColors.slateMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 8),
 
           // Online / Offline Switch
           GestureDetector(
@@ -482,27 +510,33 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _isOnline ? FairDropColors.brandGreen : FairDropColors.slateMuted,
-                shape: BoxShape.circle,
+        Expanded(
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _isOnline ? FairDropColors.brandGreen : FairDropColors.slateMuted,
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              _isOnline ? 'Live Shift • Chinnakada Hub' : 'Shift Offline • Tap to go online',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: FairDropColors.brandNavy,
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  _isOnline ? 'Live Shift • Chinnakada Hub' : 'Shift Offline • Tap to go online',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: FairDropColors.brandNavy,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+        const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
@@ -548,14 +582,18 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Today's Shift • ${_activeHoursToday.toStringAsFixed(1)}h active in Kollam",
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: FairDropColors.slateMuted,
+              Expanded(
+                child: Text(
+                  "Today's Shift • ${_activeHoursToday.toStringAsFixed(1)}h active in Kollam",
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: FairDropColors.slateMuted,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -622,26 +660,28 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               height: 12,
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 61,
-                    child: Container(color: FairDropColors.payBase),
-                  ),
-                  Expanded(
-                    flex: 14,
-                    child: Container(color: FairDropColors.payWait),
-                  ),
-                  Expanded(
-                    flex: 18,
-                    child: Container(color: FairDropColors.paySurge),
-                  ),
-                  Expanded(
-                    flex: 7,
-                    child: Container(color: FairDropColors.payGuarantee),
-                  ),
-                ],
-              ),
+              child: _todayEarnings <= 0
+                  ? Container(color: FairDropColors.mintBorder.withValues(alpha: 0.3))
+                  : Row(
+                      children: [
+                        Expanded(
+                          flex: 61,
+                          child: Container(color: FairDropColors.payBase),
+                        ),
+                        Expanded(
+                          flex: 14,
+                          child: Container(color: FairDropColors.payWait),
+                        ),
+                        Expanded(
+                          flex: 18,
+                          child: Container(color: FairDropColors.paySurge),
+                        ),
+                        Expanded(
+                          flex: 7,
+                          child: Container(color: FairDropColors.payGuarantee),
+                        ),
+                      ],
+                    ),
             ),
           ),
           const SizedBox(height: 6),
@@ -658,12 +698,21 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 ),
               ),
               if (_floorValue != null)
-                Text(
-                  'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr met (+₹${(_hourlyRate - _floorValue!).clamp(0, 999).toStringAsFixed(0)} buffer)',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: FairDropColors.brandGreen,
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      _todayEarnings > 0 && _hourlyRate >= _floorValue!
+                          ? 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr met (+₹${(_hourlyRate - _floorValue!).clamp(0, 999).toStringAsFixed(0)} buffer)'
+                          : 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr baseline',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: FairDropColors.brandGreen,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               Text(
@@ -682,32 +731,34 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _buildFormulaRow(
             color: FairDropColors.payBase,
             title: 'Base Pay & Distance',
-            subtitle: '$_deliveriesToday drops @ ₹30 + 21.0 km @ ₹10/km',
-            amount: '₹420',
+            subtitle: _deliveriesToday > 0
+                ? '$_deliveriesToday drops @ ₹${_baseRate.toStringAsFixed(0)} + ₹${_perKmRate.toStringAsFixed(0)}/km standard transit'
+                : '₹${_baseRate.toStringAsFixed(0)} base + ₹${_perKmRate.toStringAsFixed(0)}/km standard transit rate',
+            amount: _todayEarnings > 0 ? '₹${_todayEarnings.toStringAsFixed(0)}' : '₹0',
           ),
           const SizedBox(height: 8),
           _buildFormulaRow(
             color: FairDropColors.payWait,
             title: 'Geofenced Wait Time',
-            subtitle: '19 mins excess wait @ ₹5/min GPS logged',
-            amount: '₹95',
+            subtitle: 'Flat ₹${_waitCompensation.toStringAsFixed(0)} bonus when restaurant wait exceeds ${_waitThresholdMins}m',
+            amount: '₹0',
           ),
           const SizedBox(height: 8),
           _buildFormulaRow(
             color: FairDropColors.paySurge,
             title: 'Monsoon Surge Allowance',
-            subtitle: '4 coastal peak deliveries @ ₹30 bonus',
-            amount: '₹120',
+            subtitle: '₹${_surgeBonus.toStringAsFixed(0)} bonus per order during declared severe weather',
+            amount: '₹0',
           ),
           const SizedBox(height: 8),
           _buildFormulaRow(
             color: FairDropColors.payGuarantee,
             title: 'Kerala Fair Pay Top-Up',
             subtitle: _floorValue != null
-                ? 'State wage floor adjustment ₹${_floorValue!.truncateToDouble() == _floorValue ? _floorValue!.toInt() : _floorValue!.toStringAsFixed(0)}/hr min'
-                : '',
-            amount: '+₹50',
-            isPositive: true,
+                ? 'State wage floor baseline ₹${_floorValue!.truncateToDouble() == _floorValue ? _floorValue!.toInt() : _floorValue!.toStringAsFixed(0)}/hr min'
+                : 'Living wage floor protection',
+            amount: '₹0',
+            isPositive: false,
           ),
           const SizedBox(height: 16),
 
@@ -723,12 +774,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  'View Full Formula Breakdown & Ledger',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: FairDropColors.brandNavy,
+                Flexible(
+                  child: Text(
+                    'View Full Formula Breakdown & Ledger',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: FairDropColors.brandNavy,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -801,6 +855,32 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
   // ── 2. Incoming Order Alert Card ──────────────────────────────────────────
   Widget _buildIncomingOrderCard() {
+    final order = _incomingOrder;
+    if (order == null) return const SizedBox.shrink();
+
+    final orderId = order['order_id'] ?? order['id'] ?? 'FD-LIVE';
+    final distanceKm = (order['distance_km'] as num?)?.toDouble() ?? 0.0;
+    final isSurge = order['is_surge_active'] == true;
+    final basePay = (order['base_pay'] as num?)?.toDouble() ?? _baseRate;
+    final distancePay = (order['distance_pay'] as num?)?.toDouble() ?? (distanceKm * _perKmRate);
+    final surgePay = isSurge ? ((order['surge_bonus'] as num?)?.toDouble() ?? _surgeBonus) : 0.0;
+    final calcResult = order['pay_calculation_result'] as Map<String, dynamic>?;
+    final guaranteedPayout = (calcResult?['guaranteed_payout'] as num?)?.toDouble() ??
+        (order['guaranteed_payout'] as num?)?.toDouble() ??
+        (basePay + distancePay + surgePay);
+
+    final pickupAddress = _extractAddress(
+      order['restaurant_address'],
+      fallback: _extractAddress(
+        order['pickup_address'],
+        fallback: (order['restaurant_name'] as String?) ?? 'Restaurant Pickup',
+      ),
+    );
+    final dropAddress = _extractAddress(
+      order['delivery_address'],
+      fallback: (order['delivery_location'] as String?) ?? 'Customer Delivery Point',
+    );
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -858,7 +938,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Instant Match',
+                  'Live Dispatch',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -895,7 +975,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                           ),
                         ),
                         Text(
-                          '₹92',
+                          '₹${guaranteedPayout.toStringAsFixed(0)}',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 28,
                             fontWeight: FontWeight.w900,
@@ -924,7 +1004,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '3.8 km total trip',
+                          '${distanceKm.toStringAsFixed(1)} km total trip',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -946,13 +1026,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                   ),
                   child: Column(
                     children: [
-                      _buildLedgerItem('Base Pick & Drop', '₹30', FairDropColors.payBase),
+                      _buildLedgerItem('Base Pick & Drop', '₹${basePay.toStringAsFixed(0)}', FairDropColors.payBase),
                       const SizedBox(height: 5),
-                      _buildLedgerItem('Trip Distance (3.8 km @ ₹10/km)', '₹38', FairDropColors.payBase),
+                      _buildLedgerItem('Trip Distance (${distanceKm.toStringAsFixed(1)} km @ ₹${_perKmRate.toStringAsFixed(0)}/km)', '₹${distancePay.toStringAsFixed(0)}', FairDropColors.payBase),
+                      if (surgePay > 0) ...[
+                        const SizedBox(height: 5),
+                        _buildLedgerItem('Monsoon Coastal Surge', '₹${surgePay.toStringAsFixed(0)}', FairDropColors.paySurge),
+                      ],
                       const SizedBox(height: 5),
-                      _buildLedgerItem('Monsoon Coastal Surge', '₹15', FairDropColors.paySurge),
-                      const SizedBox(height: 5),
-                      _buildLedgerItem('Kitchen Buffer (3 min est.)', '₹9', FairDropColors.payWait),
+                      _buildLedgerItem('Wait Guarantee (if >${_waitThresholdMins}m)', '+₹${_waitCompensation.toStringAsFixed(0)} flat', FairDropColors.payWait),
                     ],
                   ),
                 ),
@@ -987,13 +1069,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                _extractAddress(
-                                  _incomingOrder?['restaurant_address'],
-                                  fallback: _extractAddress(
-                                    _incomingOrder?['pickup_address'],
-                                    fallback: (_incomingOrder?['restaurant_name'] as String?) ?? 'Supreme Bakers, Chinnakada',
-                                  ),
-                                ),
+                                pickupAddress,
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -1001,7 +1077,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                 ),
                               ),
                               Text(
-                                '${((_incomingOrder?['distance_km'] as num?)?.toDouble() ?? 3.8).toStringAsFixed(1)} km trip',
+                                '${distanceKm.toStringAsFixed(1)} km trip',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -1011,7 +1087,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                             ],
                           ),
                           Text(
-                            'Order #${_incomingOrder?['order_id'] ?? _incomingOrder?['id'] ?? 'FD-8821'}',
+                            'Order #$orderId',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
@@ -1050,10 +1126,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                _extractAddress(
-                                  _incomingOrder?['delivery_address'],
-                                  fallback: (_incomingOrder?['delivery_location'] as String?) ?? 'Kadappakkada Junction',
-                                ),
+                                dropAddress,
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -1090,7 +1163,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
           // Big Touch Action Buttons
           FilledButton.icon(
-            onPressed: () => _acceptOffer(_incomingOrder),
+            onPressed: () => _acceptOffer(order),
             style: FilledButton.styleFrom(
               backgroundColor: FairDropColors.brandOrange,
               minimumSize: const Size.fromHeight(52),
@@ -1100,7 +1173,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ),
             icon: const Icon(Icons.check_circle_outline, size: 20),
             label: Text(
-              'Accept Order (₹${(((_incomingOrder?['pay_calculation_result'] as Map<String, dynamic>?)?['guaranteed_payout'] ?? _incomingOrder?['guaranteed_payout'] as num?)?.toDouble() ?? 92.0).toStringAsFixed(0)} Guaranteed)',
+              'Accept Order (₹${guaranteedPayout.toStringAsFixed(0)} Guaranteed)',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -1111,6 +1184,11 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
           OutlinedButton(
             onPressed: () {
+              setState(() {
+                _incomingOrder = null;
+                _countdownTimer?.cancel();
+                _secondsLeft = 0;
+              });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Offer declined with zero acceptance rate penalty.'),
@@ -1184,12 +1262,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             children: [
               const Icon(Icons.policy_rounded, color: FairDropColors.brandGreen, size: 22),
               const SizedBox(width: 8),
-              Text(
-                'Kollam Hub Fairness Index',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: FairDropColors.brandNavy,
+              Expanded(
+                child: Text(
+                  'Kollam Hub Fairness Index',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: FairDropColors.brandNavy,
+                  ),
                 ),
               ),
             ],
@@ -1207,27 +1287,33 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: FairDropColors.brandGreen,
-                            shape: BoxShape.circle,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: FairDropColors.brandGreen,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Kerala Gig Worker Wage Norms',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: FairDropColors.brandNavy,
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Kerala Gig Worker Wage Norms',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: FairDropColors.brandNavy,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(

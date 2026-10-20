@@ -240,5 +240,41 @@ void main() {
       expect(find.byKey(const Key('btn_retry_rider_home')), findsOneWidget);
       expect(find.byKey(const Key('btn_back_rider_home')), findsOneWidget);
     });
+
+    testWidgets('RiderHomeScreen displays real zeros for new rider and hides offer card when no order is pending (F12)', (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: FairDropTheme.lightTheme,
+          home: const RiderHomeScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+
+      // Verify no hardcoded mock shift earnings
+      expect(find.text('₹685'), findsNothing);
+      expect(find.textContaining('4.3h'), findsNothing);
+      expect(find.text('₹420'), findsNothing);
+      expect(find.text('₹95'), findsNothing);
+      expect(find.text('+₹50'), findsNothing);
+      expect(find.textContaining('21.0 km @ ₹10/km'), findsNothing);
+
+      // Verify real zero shift statistics for new rider
+      expect(find.textContaining('0.0h active in Kollam'), findsOneWidget);
+      expect(find.text('Calculated from 0 completed drops • Zero hidden deductions'), findsOneWidget);
+
+      // Verify no fake incoming offer card
+      expect(find.text('Instant Match'), findsNothing);
+      expect(find.textContaining('New Offer'), findsNothing);
+      expect(find.text('Order #FD-8821'), findsNothing);
+      expect(find.text('Supreme Bakers, Chinnakada'), findsNothing);
+      expect(find.text('₹92'), findsNothing);
+    });
   });
 }
