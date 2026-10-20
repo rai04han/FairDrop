@@ -404,6 +404,23 @@ async function updateStatus(req, res) {
       });
     }
 
+    // ── Enforce rider ownership check ────────────────────────────────
+    if (req.user.role === 'rider' && order.rider_id && order.rider_id.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not the allocated rider for this order.',
+      });
+    }
+
+    // ── Idempotent delivery completion (FR-74) ───────────────────────
+    if (order.status === 'delivered' && new_status === 'delivered') {
+      return res.status(200).json({
+        success: true,
+        message: `Order ${order.order_id} status updated to "delivered".`,
+        order,
+      });
+    }
+
     // ── Enforce valid status transitions ─────────────────────────────
     const allowedNext = Order.VALID_TRANSITIONS[order.status];
     if (!allowedNext || !allowedNext.includes(new_status)) {

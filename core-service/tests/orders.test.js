@@ -435,6 +435,42 @@ describe('Order Lifecycle Transitions & Active Polling', () => {
     assert.equal(status, 400);
   });
 
+  test('idempotent delivered (FR-74): sequential and parallel requests return 200 with equal payloads; other rider returns 403', async () => {
+    // 1. A different rider attempting delivered returns 403
+    const forbiddenRes = await req('PATCH', `/api/orders/${flowOrderId}/status`, {
+      new_status: 'delivered',
+    }, secondRiderToken);
+    assert.equal(forbiddenRes.status, 403);
+    assert.match(forbiddenRes.data.message, /not the allocated rider/i);
+
+    // 2. Sequential delivered requests return 200 with equal payloads
+    const seq1 = await req('PATCH', `/api/orders/${flowOrderId}/status`, {
+      new_status: 'delivered',
+    }, riderToken);
+    const seq2 = await req('PATCH', `/api/orders/${flowOrderId}/status`, {
+      new_status: 'delivered',
+    }, riderToken);
+    assert.equal(seq1.status, 200);
+    assert.equal(seq2.status, 200);
+    assert.deepEqual(seq1.data, seq2.data);
+
+    // 3. Parallel delivered requests return 200 with equal payloads
+    const [par1, par2] = await Promise.all([
+      req('PATCH', `/api/orders/${flowOrderId}/status`, { new_status: 'delivered' }, riderToken),
+      req('PATCH', `/api/orders/${flowOrderId}/status`, { new_status: 'delivered' }, riderToken),
+    ]);
+    assert.equal(par1.status, 200);
+    assert.equal(par2.status, 200);
+    assert.deepEqual(par1.data, par2.data);
+    assert.deepEqual(seq1.data, par1.data);
+
+    // 4. Verify single delivery and single delivered entry in status_history
+    const orderDoc = await Order.findOne({ order_id: flowOrderId });
+    assert.equal(orderDoc.status, 'delivered');
+    const deliveredCount = orderDoc.status_history.filter(h => h.status === 'delivered').length;
+    assert.equal(deliveredCount, 1);
+  });
+
   test('out-of-zone delivery updates rider current_zone_id and current_zone_code (FR-73, D3)', async () => {
     // Clean up open orders for Rider 2
     await Order.deleteMany({ rider_id: secondRiderUser._id });
