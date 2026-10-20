@@ -40,14 +40,8 @@ class OrderAcceptanceScreen extends StatefulWidget {
 class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
   Order? _orderModel;
   Map<String, dynamic>? _order;
-  Map<String, dynamic>? _payConfig = const {
-    'base_rate': '30.00',
-    'per_km_rate': '10.00',
-    'surge_bonus': '15.00',
-    'wait_threshold_mins': 1,
-    'wait_compensation': '2.00',
-    'min_wage_per_hour': '75.00',
-  };
+  Map<String, dynamic>? _payConfig;
+  bool _isLoadingPayConfig = false;
   bool _isActing = false;
   bool _outOfZoneConsent = false;
   Timer? _timer;
@@ -107,19 +101,26 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
   }
 
   Future<void> _loadPayConfig() async {
+    if (!mounted) return;
+    setState(() => _isLoadingPayConfig = true);
     try {
       final data = await ApiService.getPayConfig().timeout(
-        const Duration(seconds: 1),
+        const Duration(seconds: 2),
         onTimeout: () => {},
       );
       final active = data['active_config'] ?? data['active'] ?? data['config'];
       if (active is Map<String, dynamic> && mounted) {
         setState(() {
           _payConfig = active;
+          _isLoadingPayConfig = false;
         });
+        return;
       }
     } catch (_) {
-      // Fallback already initialized
+      // Failed to load
+    }
+    if (mounted) {
+      setState(() => _isLoadingPayConfig = false);
     }
   }
 
@@ -131,29 +132,34 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
 
   bool get _isSurge => _orderModel?.isSurgeActive ?? (_order?['is_surge_active'] as bool?) ?? false;
 
+  bool get _hasValidPayConfig =>
+      _payConfig != null &&
+      _payConfig!['base_rate'] != null &&
+      _payConfig!['per_km_rate'] != null;
+
   double get _baseRate {
-    return double.tryParse(_payConfig?['base_rate']?.toString() ?? '30') ?? 30.0;
+    return double.tryParse(_payConfig?['base_rate']?.toString() ?? '') ?? 0.0;
   }
 
   double get _perKmRate {
-    return double.tryParse(_payConfig?['per_km_rate']?.toString() ?? '10') ?? 10.0;
+    return double.tryParse(_payConfig?['per_km_rate']?.toString() ?? '') ?? 0.0;
   }
 
   double get _surgeBonus {
     if (!_isSurge) return 0.0;
-    return double.tryParse(_payConfig?['surge_bonus']?.toString() ?? '15') ?? 15.0;
+    return double.tryParse(_payConfig?['surge_bonus']?.toString() ?? '') ?? 0.0;
   }
 
   double get _waitCompensation {
-    return double.tryParse(_payConfig?['wait_compensation']?.toString() ?? '2') ?? 2.0;
+    return double.tryParse(_payConfig?['wait_compensation']?.toString() ?? '') ?? 0.0;
   }
 
   int get _waitThresholdMins {
-    return int.tryParse(_payConfig?['wait_threshold_mins']?.toString() ?? '1') ?? 1;
+    return int.tryParse(_payConfig?['wait_threshold_mins']?.toString() ?? '') ?? 0;
   }
 
   double get _minWagePerHour {
-    return double.tryParse(_payConfig?['min_wage_per_hour']?.toString() ?? '75') ?? 75.0;
+    return double.tryParse(_payConfig?['min_wage_per_hour']?.toString() ?? '') ?? 0.0;
   }
 
   double get _distancePay => _distanceKm * _perKmRate;
@@ -163,6 +169,7 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
   bool get _isOutOfZone => _orderModel?.isOutOfZone ?? (_order?['is_out_of_zone'] as bool?) ?? false;
 
   bool get _canAccept =>
+      _hasValidPayConfig &&
       _secondsLeft > 0 &&
       (!_isOutOfZone || _outOfZoneConsent);
 
@@ -821,6 +828,48 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
+                    ],
+
+                    // Explanation & Retry when constants fail to load (FR-16)
+                    if (!_hasValidPayConfig) ...[
+                      Container(
+                        key: const Key('pay_config_error_banner'),
+                        margin: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: FairDropColors.errorRed.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: FairDropColors.errorRed.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: FairDropColors.errorRed, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Unable to load pay policy constants. Acceptance is disabled until verified rates are loaded.',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: FairDropColors.errorRed,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              key: const Key('retry_pay_config_button'),
+                              onPressed: _isLoadingPayConfig ? null : _loadPayConfig,
+                              child: Text(
+                                _isLoadingPayConfig ? 'Loading...' : 'Retry',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: FairDropColors.brandNavy,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
 
                     // Action Buttons (Stitch Spec)
