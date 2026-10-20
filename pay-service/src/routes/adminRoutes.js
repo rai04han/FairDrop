@@ -155,18 +155,34 @@ async function savePayConfig(req, res) {
       });
     }
     const [y, m, d] = parts.map(Number);
-    const clientDateMidnight = new Date(y, m - 1, d);
-    if (isNaN(clientDateMidnight.getTime())) {
+    if (!y || !m || !d || isNaN(y) || isNaN(m) || isNaN(d)) {
       return res.status(400).json({
         error: 'Validation failed',
         message: 'Invalid effective_from date format. Expected YYYY-MM-DD.',
       });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const clientDateMidnight = new Date(y, m - 1, d);
+    if (
+      isNaN(clientDateMidnight.getTime()) ||
+      clientDateMidnight.getFullYear() !== y ||
+      clientDateMidnight.getMonth() !== m - 1 ||
+      clientDateMidnight.getDate() !== d
+    ) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: 'Invalid effective_from date format. Expected YYYY-MM-DD.',
+      });
+    }
 
-    const diffDays = Math.round((clientDateMidnight - today) / (1000 * 60 * 60 * 24));
+    // Build the stored date string directly from validated y/m/d parts (consistent with MySQL CURDATE())
+    const effectiveFromStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    // Comparison using the same local-date basis
+    const now = new Date();
+    const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const diffDays = Math.round((clientDateMidnight - todayLocal) / (1000 * 60 * 60 * 24));
     if (diffDays < 7) {
       return res.status(400).json({
         error: 'Validation failed',
@@ -174,7 +190,6 @@ async function savePayConfig(req, res) {
       });
     }
 
-    const effectiveFromStr = clientDateMidnight.toISOString().split('T')[0];
     const createdBy = req.user.id ? String(req.user.id) : (req.user.role || 'admin');
 
     // 6. Insert new config row

@@ -183,6 +183,45 @@ describe('Pay Service Authentication & Config API (T3)', () => {
       assert.ok(data.config_id);
     });
 
+    test('accepts effective_from 8 days out with 200 and stored/returned effective_from equals exactly date sent', async () => {
+      const eightDaysAhead = getDateDaysAhead(8);
+      const payload = {
+        base_rate: 17,
+        per_km_rate: 7,
+        surge_bonus: 25,
+        wait_threshold_mins: 5,
+        wait_compensation: 12,
+        min_wage_per_hour: 75,
+        effective_from: eightDaysAhead,
+        change_reason: 'TEST: 8-day timezone verification',
+      };
+
+      const res = await fetch(`${baseUrl}/api/admin/pay-config`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.success, true);
+      assert.strictEqual(data.effective_from, eightDaysAhead);
+
+      // Verify stored DB value matches exactly the date sent
+      const [rows] = await pool.execute(
+        'SELECT effective_from FROM pay_configs WHERE config_id = ?',
+        [data.config_id]
+      );
+      assert.strictEqual(rows.length, 1);
+      const dbDate = rows[0].effective_from instanceof Date
+        ? `${rows[0].effective_from.getFullYear()}-${String(rows[0].effective_from.getMonth() + 1).padStart(2, '0')}-${String(rows[0].effective_from.getDate()).padStart(2, '0')}`
+        : String(rows[0].effective_from).split('T')[0];
+      assert.strictEqual(dbDate, eightDaysAhead);
+    });
+
     test('rejects empty change_reason (FR-42)', async () => {
       const tenDaysAhead = getDateDaysAhead(10);
       const payload = {
