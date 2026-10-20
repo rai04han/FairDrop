@@ -162,13 +162,17 @@ Onboarding is P1 but carries two Fairwork principles. Build it before Profile.
 
 ### 5.8 Analytics (P0)
 
-- FR-34. Separate screen, reachable from the Dashboard. Compares FairDrop incentive policy against illustrative target platform incentive ladders (e.g., Zomato ladder: 19 orders = ₹306, 23 = ₹383, 25 = ₹434, 27 = ₹510) using `fl_chart`. Since base pay, distance pay, monsoon, and return pay are identical on both sides, the screen specifically compares incentives and clearly states this scope.
-- FR-35. States illustrative model assumptions and parameters transparently on screen: FairDrop linear incentive rate (configurable default ₹17.04/order), peak bonus (₹25 × 2 windows = ₹50) with interactive toggle for peak windows covered, and benchmark order targets.
-- FR-36. Balanced and transparent comparison showing FairDrop winning fairly without fabricated claims or "cliff wins" framing:
-  1. Chart of cumulative incentive vs orders 0–30 with Zomato step line, FairDrop with peak, and FairDrop without peak.
-  2. Parity table showing orders needed to achieve equal incentives (with peak: 16, 20, 23, 27; without peak: 18, 23, 26, 30).
+- FR-34. Separate screen, reachable from the Dashboard. Compares FairDrop incentive policy against illustrative target platform incentive ladders (Zomato ladder as example data from 28 Jun single source screenshot: 19 orders = ₹306, 23 = ₹383, 25 = ₹434, 27 = ₹510; labelled "illustrative example", replacing the old 10-delivery/₹500 cliff model) using `fl_chart`. Since base pay, distance pay, monsoon, and return pay are identical on both sides, the screen specifically compares incentives and clearly states this scope on screen.
+- FR-35. States illustrative model assumptions and parameters transparently on screen: FairDrop linear incentive rate formula `incentive(n) = rate × n + peak_bonus` where rate is configurable (default (510 − 50) / 27 ≈ ₹17.04 per order), peak bonus (₹25 × 2 windows: 7–9 PM, 12–2 PM = ₹50) with interactive toggle for "peak windows covered", and benchmark order targets.
+- FR-36. Pay Analytics must show the FairDrop policy winning fairly, removing "Cliff Wins" framing and the unsourced "over 80% of shifts fail quota" claim:
+  1. Chart of cumulative incentive vs orders 0–30 with the Zomato step line, FairDrop with peak, and FairDrop without peak.
+  2. Parity table showing orders needed to earn the same incentive: With peak: 16, 20, 23, 27; Without peak: 18, 23, 26, 30.
   3. Equal pay benchmark reached at 27 orders with peak bonus.
-  4. Explanatory notes: peak bonus assumes online presence in both windows; daily rates vary by market; platform break-even rate = expected incentive spend ÷ expected orders per rider.
+  4. Stated explanatory notes on screen:
+     - Peak bonus assumes the rider is online in both windows (7–9 PM, 12–2 PM).
+     - The rate varies by day like Zomato's.
+     - The platform's break-even rate = expected Zomato incentive spend ÷ expected orders per rider.
+  5. Implemented as a separate analytics calculation without modifying `payEngine.js` formulas or the `/api/pay/calculate` backend contract. Prefer reading values from existing config or using a clearly labelled constants file (`incentive_analytics.dart`).
 
 ### 5.9 Admin: Pay Config (P1)
 
