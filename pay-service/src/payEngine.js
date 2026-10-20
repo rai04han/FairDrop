@@ -119,24 +119,17 @@ function calculatePay(req, config, cumulativeEarningsBeforeThisDelivery = 0) {
     base_rate + distance_pay + surge_bonus + wait_compensation
   );
 
-  // ── Floor top-up ───────────────────────────────────────────────────────────
-  // After this delivery, check if hourly earnings meet minimum wage.
-  // If not, add a top-up to cover the shortfall.
-  //
-  // This implements Problem 6 (Minimum Earnings Floor) — partial scope.
-  // The floor applies only when active_hours_today > 0.
+  // ── Floor top-up (AUDIT-F16 Redesign) ─────────────────────────────────────
+  // Per AUDIT-F16, the statutory floor (config MIN_WAGE_PER_HOUR) is evaluated
+  // only per completed 60-minute block of engaged time, NOT inside an individual
+  // delivery's ledger. The per-delivery ledger goes from 7 lines to 6.
+  // Delivery ledger floor_topup is 0.00.
+  const floor_topup = 0.00;
 
   const cumulativeAfter = round2(cumulativeEarningsBeforeThisDelivery + total_delivery_pay);
-
-  let hourly_earnings_so_far = 0;
-  let floor_topup = 0;
-
+  let hourly_earnings_so_far = total_delivery_pay;
   if (active_hours_today > 0) {
     hourly_earnings_so_far = round2(cumulativeAfter / active_hours_today);
-
-    const minimumExpected = round2(MIN_WAGE_PER_HOUR * active_hours_today);
-    const shortfall = round2(minimumExpected - cumulativeAfter);
-    floor_topup = shortfall > 0 ? shortfall : 0;
   }
 
   return {
@@ -152,6 +145,100 @@ function calculatePay(req, config, cumulativeEarningsBeforeThisDelivery = 0) {
 }
 
 /**
+ * Evaluates statutory wage floor top-up across completed blocks of engaged time (AUDIT-F16).
+ * Policy:
+ * - Minimum wage floor (config.MIN_WAGE_PER_HOUR) is evaluated only per COMPLETED
+ *   window (default 60-minute block) of cumulative engaged time.
+ * - Engaged time accumulates across orders (assigned/accepted to delivered). Idle time excluded.
+ * - A delivery belongs to the block in which it ends on the cumulative engaged timeline.
+ * - Top-up for a block = max(0, floor - delivery pay in that block).
+ * - Blocks are checked independently (a strong block does not offset a weak one).
+ * - Leftover minutes carry over; no pro-rata at shift end.
+ *
+ * @param {Array<Object>} orders - Completed orders chronologically sorted by delivered_at
+ * @param {Object} options
+ * @param {number} [options.windowMinutes=60] - Evaluation window length in minutes
+ * @param {number} [options.minWagePerHour=70] - Statutory floor per hour
+ * @returns {Object} { window_minutes, total_engaged_minutes, num_completed_blocks, carried_minutes, total_topup, completed_blocks }
+ */
+function evaluateFloorBlocks(orders, options = {}) {
+  const windowMinutes = Number(options.windowMinutes || 60);
+  const minWagePerHour = Number(options.minWagePerHour !== undefined ? options.minWagePerHour : 70);
+  const floorPerBlock = round2((minWagePerHour * windowMinutes) / 60);
+
+  let cumulativeEngagedMinutes = 0;
+  const taggedOrders = [];
+
+  for (const order of (orders || [])) {
+    let engagedMins = 0;
+    if (order.engaged_minutes !== undefined && order.engaged_minutes !== null) {
+      engagedMins = Number(order.engaged_minutes);
+    } else if (order.delivered_at && (order.assigned_at || order.accepted_at)) {
+      const diffMs = new Date(order.delivered_at) - new Date(order.assigned_at || order.accepted_at);
+      engagedMins = Math.max(0, diffMs / 60000);
+    }
+
+    const startTimeline = cumulativeEngagedMinutes;
+    cumulativeEngagedMinutes += engagedMins;
+    const endTimeline = cumulativeEngagedMinutes;
+
+    // A delivery belongs to the block in which it ends on the cumulative engaged timeline.
+    const blockIndex = endTimeline <= 0 ? 1 : Math.floor((endTimeline - 1e-9) / windowMinutes) + 1;
+
+    const pay = order.total_delivery_pay !== undefined
+      ? Number(order.total_delivery_pay)
+      : round2(
+          Number(order.base_rate || 0) +
+          Number(order.distance_pay || 0) +
+          Number(order.surge_bonus || 0) +
+          Number(order.wait_compensation || 0)
+        );
+
+    taggedOrders.push({
+      ...order,
+      engaged_minutes: engagedMins,
+      start_timeline_min: startTimeline,
+      end_timeline_min: endTimeline,
+      block_index: blockIndex,
+      delivery_pay: pay,
+    });
+  }
+
+  const numCompletedBlocks = Math.floor(cumulativeEngagedMinutes / windowMinutes);
+  const carriedMinutes = round2(cumulativeEngagedMinutes - (numCompletedBlocks * windowMinutes));
+
+  const completedBlocks = [];
+  let totalTopup = 0;
+
+  for (let b = 1; b <= numCompletedBlocks; b++) {
+    const ordersInBlock = taggedOrders.filter((o) => o.block_index === b);
+    const deliveryPayInBlock = round2(
+      ordersInBlock.reduce((sum, o) => sum + o.delivery_pay, 0)
+    );
+    const topup = Math.max(0, round2(floorPerBlock - deliveryPayInBlock));
+    totalTopup = round2(totalTopup + topup);
+
+    completedBlocks.push({
+      block_index: b,
+      engaged_minutes: windowMinutes,
+      delivery_pay: deliveryPayInBlock,
+      floor_amount: floorPerBlock,
+      topup_amount: topup,
+      orders: ordersInBlock.map((o) => o.order_id).filter(Boolean),
+    });
+  }
+
+  return {
+    window_minutes: windowMinutes,
+    total_engaged_minutes: round2(cumulativeEngagedMinutes),
+    num_completed_blocks: numCompletedBlocks,
+    carried_minutes: carriedMinutes,
+    total_topup: totalTopup,
+    completed_blocks: completedBlocks,
+  };
+}
+
+/**
  * Rounds a number to 2 decimal places.
  * Avoids floating-point drift in monetary calculations.
  */
@@ -159,4 +246,4 @@ function round2(value) {
   return Math.round(value * 100) / 100;
 }
 
-module.exports = { calculatePay, validateRequest };
+module.exports = { calculatePay, evaluateFloorBlocks, validateRequest, round2 };

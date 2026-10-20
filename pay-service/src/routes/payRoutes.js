@@ -12,7 +12,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { calculatePay, validateRequest } = require('../payEngine');
+const { calculatePay, evaluateFloorBlocks, validateRequest, round2 } = require('../payEngine');
 const verifyToken = require('../middleware/verifyToken');
 
 // Enforce JWT authentication on all pay routes
@@ -26,6 +26,7 @@ router.get('/config', async (req, res) => {
     const [activeRows] = await pool.execute(
       `SELECT config_id, base_rate, per_km_rate, surge_bonus,
               wait_threshold_mins, wait_compensation, min_wage_per_hour,
+              floor_window_minutes,
               effective_from, is_active, created_at, created_by, change_reason
        FROM pay_configs
        WHERE effective_from <= CURDATE()
@@ -36,6 +37,7 @@ router.get('/config', async (req, res) => {
     const [scheduledRows] = await pool.execute(
       `SELECT config_id, base_rate, per_km_rate, surge_bonus,
               wait_threshold_mins, wait_compensation, min_wage_per_hour,
+              floor_window_minutes,
               effective_from, is_active, created_at, created_by, change_reason
        FROM pay_configs
        WHERE effective_from > CURDATE()
@@ -50,10 +52,15 @@ router.get('/config', async (req, res) => {
       });
     }
 
+    const active = { ...activeRows[0] };
+    if (process.env.FLOOR_WINDOW_MINUTES_OVERRIDE) {
+      active.floor_window_minutes = parseInt(process.env.FLOOR_WINDOW_MINUTES_OVERRIDE, 10);
+    }
+
     return res.status(200).json({
       success: true,
-      config: activeRows[0],
-      active: activeRows[0],
+      config: active,
+      active: active,
       scheduled: scheduledRows.length > 0 ? scheduledRows[0] : null,
     });
   } catch (error) {
@@ -200,17 +207,28 @@ router.post('/calculate', async (req, res) => {
 
     // ── Step 6: Calculate pay using the pure engine ─────────────────────
     // This is the core academic contribution — linear model with
-    // surge, wait compensation, and floor top-up.
+    // surge, wait compensation. Floor top-up is evaluated in completed blocks (AUDIT-F16).
     const payResult = calculatePay(req.body, payConfig, cumulativeEarningsBeforeThisDelivery);
+
+    // Compute engaged minutes for this delivery
+    let engagedMinutes = 0;
+    if (req.body.engaged_minutes !== undefined && req.body.engaged_minutes !== null) {
+      engagedMinutes = Number(req.body.engaged_minutes);
+    } else if (req.body.delivered_at && (req.body.assigned_at || req.body.accepted_at)) {
+      const diffMs = new Date(req.body.delivered_at) - new Date(req.body.assigned_at || req.body.accepted_at);
+      if (diffMs > 0) {
+        engagedMinutes = Math.round((diffMs / 60000) * 100) / 100;
+      }
+    }
 
     // ── Step 7: Persist delivery record to MySQL ────────────────────────
     // Immutable after insert — forms the audit trail.
     const [deliveryInsert] = await pool.execute(
       `INSERT INTO deliveries
          (order_id, rider_id, config_id, distance_km, is_surge_active,
-          restaurant_wait_mins, active_hours_today,
+          restaurant_wait_mins, active_hours_today, engaged_minutes,
           delay_type, delay_verified, delay_source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         order_id,
         rider_id,
@@ -219,6 +237,7 @@ router.post('/calculate', async (req, res) => {
         is_surge_active,
         restaurant_wait_mins,
         active_hours_today,
+        engagedMinutes,
         delay_context.type,
         delay_context.verified,
         delay_context.source,
@@ -249,11 +268,100 @@ router.post('/calculate', async (req, res) => {
       ]
     );
 
+    // ── Step 8b: Evaluate & Persist Statutory Floor Blocks (AUDIT-F16) ──
+    const windowMinutes = Number(
+      process.env.FLOOR_WINDOW_MINUTES_OVERRIDE || activeConfig.floor_window_minutes || 60
+    );
+
+    const [allDeliveriesToday] = await pool.execute(
+      `SELECT d.order_id, d.engaged_minutes, d.created_at,
+              e.total_delivery_pay, e.base_rate, e.distance_pay, e.surge_bonus, e.wait_compensation
+       FROM deliveries d
+       JOIN earnings e ON d.delivery_id = e.delivery_id
+       WHERE d.rider_id = ? AND DATE(d.created_at) = CURDATE()
+       ORDER BY d.created_at ASC, d.delivery_id ASC`,
+      [rider_id]
+    );
+
+    const floorEval = evaluateFloorBlocks(allDeliveriesToday, {
+      windowMinutes,
+      minWagePerHour: payConfig.MIN_WAGE_PER_HOUR,
+    });
+
+    for (const block of floorEval.completed_blocks) {
+      await pool.execute(
+        `INSERT INTO floor_topups
+           (rider_id, block_index, shift_date, engaged_minutes, delivery_pay, floor_amount, topup_amount)
+         VALUES (?, ?, CURDATE(), ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           engaged_minutes = VALUES(engaged_minutes),
+           delivery_pay = VALUES(delivery_pay),
+           floor_amount = VALUES(floor_amount),
+           topup_amount = VALUES(topup_amount)`,
+        [
+          rider_id,
+          block.block_index,
+          block.engaged_minutes,
+          block.delivery_pay,
+          block.floor_amount,
+          block.topup_amount,
+        ]
+      );
+    }
+
     // ── Step 9: Return pay breakdown (matches API contract response) ────
     return res.status(200).json(payResult);
 
   } catch (error) {
     console.error('POST /api/pay/calculate error:', error.message);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+    });
+  }
+});
+
+// ── GET /api/pay/floor-topups/:rider_id ─────────────────────────────────────
+// Returns completed statutory floor blocks and carried minutes (AUDIT-F16)
+router.get('/floor-topups/:rider_id', async (req, res) => {
+  try {
+    const { rider_id } = req.params;
+
+    if (req.user.role !== 'admin' && req.user.id !== rider_id) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Access denied.',
+      });
+    }
+
+    const [topupRows] = await pool.execute(
+      `SELECT topup_id, rider_id, block_index, shift_date, engaged_minutes, delivery_pay, floor_amount, topup_amount, created_at
+       FROM floor_topups
+       WHERE rider_id = ? AND shift_date = CURDATE()
+       ORDER BY block_index ASC`,
+      [rider_id]
+    );
+
+    const totalTopup = topupRows.reduce((sum, r) => sum + parseFloat(r.topup_amount), 0);
+
+    const [engagedSum] = await pool.execute(
+      `SELECT COALESCE(SUM(engaged_minutes), 0) AS total_engaged_mins
+       FROM deliveries
+       WHERE rider_id = ? AND DATE(created_at) = CURDATE()`,
+      [rider_id]
+    );
+    const engagedMins = parseFloat(engagedSum[0].total_engaged_mins || 0);
+
+    return res.status(200).json({
+      success: true,
+      rider_id,
+      shift_date: new Date().toISOString().split('T')[0],
+      total_topup: round2(totalTopup),
+      total_engaged_minutes: engagedMins,
+      blocks: topupRows,
+    });
+  } catch (error) {
+    console.error('GET /api/pay/floor-topups error:', error.message);
     return res.status(500).json({
       error: 'Internal server error',
       message: error.message,
@@ -304,6 +412,7 @@ router.get('/history/:rider_id', async (req, res) => {
          d.distance_km,
          d.is_surge_active,
          d.restaurant_wait_mins,
+         d.engaged_minutes,
          e.created_at
        FROM earnings e
        JOIN deliveries d ON e.delivery_id = d.delivery_id
@@ -313,10 +422,34 @@ router.get('/history/:rider_id', async (req, res) => {
       [rider_id]
     );
 
+    // Fetch today's floor top-up records (AUDIT-F16)
+    const [topupRows] = await pool.execute(
+      `SELECT block_index, shift_date, engaged_minutes, delivery_pay, floor_amount, topup_amount
+       FROM floor_topups
+       WHERE rider_id = ? AND shift_date = CURDATE()
+       ORDER BY block_index ASC`,
+      [rider_id]
+    );
+
+    const totalFloorTopup = topupRows.reduce((sum, r) => sum + parseFloat(r.topup_amount), 0);
+
+    const [engagedSum] = await pool.execute(
+      `SELECT COALESCE(SUM(engaged_minutes), 0) AS total_engaged_mins
+       FROM deliveries
+       WHERE rider_id = ? AND DATE(created_at) = CURDATE()`,
+      [rider_id]
+    );
+    const engagedMins = parseFloat(engagedSum[0].total_engaged_mins || 0);
+    const engagedHours = round2(engagedMins / 60);
+
     return res.status(200).json({
       rider_id,
       total_records: history.length,
       earnings: history,
+      floor_topups: topupRows,
+      total_floor_topup: round2(totalFloorTopup),
+      engaged_minutes: engagedMins,
+      engaged_hours: engagedHours,
     });
 
   } catch (error) {

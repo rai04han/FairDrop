@@ -157,22 +157,23 @@ void main() {
       expect(find.text('VERIFIED'), findsOneWidget);
       expect(find.text('₹29.80'), findsWidgets);
 
-      // Verify all lines exist
+      // Verify 6 itemized lines exist (F16 redesign: floor top-up removed from delivery ledger)
       expect(find.text('Base Rate'), findsOneWidget);
       expect(find.text('Distance Pay'), findsOneWidget);
       expect(find.text('Surge Bonus'), findsOneWidget);
       expect(find.text('Wait Compensation'), findsOneWidget);
       expect(find.text('Total Delivery Pay'), findsOneWidget);
-      expect(find.text('Floor Top-Up'), findsOneWidget);
+      expect(find.text('Effective Hourly Rate So Far'), findsOneWidget);
+      expect(find.text('Floor Top-Up'), findsNothing);
 
       // Verify visual order: Base (15) + Distance (4.80) + Surge (0) + Wait (10) = Total Delivery Pay (29.80)
       final waitY = tester.getTopLeft(find.text('Wait Compensation')).dy;
       final totalPayY = tester.getTopLeft(find.text('Total Delivery Pay')).dy;
-      final floorTopupY = tester.getTopLeft(find.text('Floor Top-Up')).dy;
+      final hourlyY = tester.getTopLeft(find.text('Effective Hourly Rate So Far')).dy;
 
-      // Total Delivery Pay must be below Wait Compensation, and Floor Top-Up below Total Delivery Pay
+      // Total Delivery Pay must be below Wait Compensation, and Effective Hourly Rate below Total Delivery Pay
       expect(waitY < totalPayY, isTrue, reason: 'Total Delivery Pay must be visually below Wait Compensation');
-      expect(totalPayY < floorTopupY, isTrue, reason: 'Floor Top-Up must be visually below Total Delivery Pay');
+      expect(totalPayY < hourlyY, isTrue, reason: 'Effective Hourly Rate must be visually below Total Delivery Pay');
     });
 
     testWidgets('PayBreakdownScreen: shows CACHED badge with interactive Retry when fallback/cached pay is used', (tester) async {

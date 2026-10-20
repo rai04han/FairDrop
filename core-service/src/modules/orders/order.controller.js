@@ -292,6 +292,7 @@ async function acceptOrder(req, res) {
 
     order.rider_ack = 'accepted';
     order.status = 'assigned';
+    order.assigned_at = new Date();
     order.status_history.push({
       status: 'assigned',
       changed_at: new Date(),
@@ -445,6 +446,7 @@ async function updateStatus(req, res) {
         order.rider_id = req.user.id;
       }
       order.rider_ack = 'accepted';
+      order.assigned_at = now;
     } else if (new_status === 'arrived') {
       order.arrived_at = now;
     } else if (new_status === 'picked_up') {

@@ -201,13 +201,24 @@ async function getStats(req, res) {
       updated_at: { $gte: today },
     });
 
+    // Calculate engaged hours from delivered orders today (AUDIT-F16)
+    let engagedMsToday = 0;
+    for (const order of deliveredOrders) {
+      const assignedTime = order.assigned_at || order.accepted_at || order.created_at;
+      const deliveredTime = order.delivered_at || order.updated_at;
+      if (assignedTime && deliveredTime) {
+        const diff = new Date(deliveredTime).getTime() - new Date(assignedTime).getTime();
+        if (diff > 0) engagedMsToday += diff;
+      }
+    }
+    const engagedHours = Math.round((engagedMsToday / (1000 * 60 * 60)) * 100) / 100;
+
     const deliveriesToday = deliveredOrders.length;
-    let totalEarningsToday = 0;
+    let totalDeliveryPayToday = 0;
     let basePayToday = 0;
     let distancePayToday = 0;
     let waitPayToday = 0;
     let surgePayToday = 0;
-    let floorTopupToday = 0;
 
     for (const order of deliveredOrders) {
       if (order.pay_calculation_result) {
@@ -215,7 +226,6 @@ async function getStats(req, res) {
         const dist = parseFloat(order.pay_calculation_result.distance_pay || 0);
         const wait = parseFloat(order.pay_calculation_result.wait_compensation || 0);
         const surge = parseFloat(order.pay_calculation_result.surge_bonus || 0);
-        const topup = parseFloat(order.pay_calculation_result.floor_topup || 0);
         const deliveryPay = parseFloat(
           order.pay_calculation_result.total_delivery_pay !== undefined
             ? order.pay_calculation_result.total_delivery_pay
@@ -226,23 +236,36 @@ async function getStats(req, res) {
         distancePayToday += dist;
         waitPayToday += wait;
         surgePayToday += surge;
-        floorTopupToday += topup;
-        totalEarningsToday += (deliveryPay + topup);
+        totalDeliveryPayToday += deliveryPay;
       }
     }
 
-    totalEarningsToday = Math.round(totalEarningsToday * 100) / 100;
+    // Fetch statutory floor topups today from pay-service (AUDIT-F16)
+    let floorTopupToday = 0;
+    try {
+      const payServiceUrl = process.env.PAY_SERVICE_URL || 'http://localhost:3001';
+      const payRes = await fetch(`${payServiceUrl}/api/pay/floor-topups/${rider._id}`, {
+        headers: { Authorization: req.headers.authorization },
+      });
+      if (payRes.ok) {
+        const payData = await payRes.json();
+        floorTopupToday = parseFloat(payData.total_topup || 0);
+      }
+    } catch (_) {}
+
+    const totalEarningsToday = Math.round((totalDeliveryPayToday + floorTopupToday) * 100) / 100;
     const baseDistancePayToday = Math.round((basePayToday + distancePayToday) * 100) / 100;
     waitPayToday = Math.round(waitPayToday * 100) / 100;
     surgePayToday = Math.round(surgePayToday * 100) / 100;
     floorTopupToday = Math.round(floorTopupToday * 100) / 100;
     const currentZone = profile.current_zone_code || profile.assigned_zone_code || 'KLM-CHK';
-    const hourlyRate = activeHours > 0 ? Math.round((totalEarningsToday / activeHours) * 100) / 100 : 0;
+    const hourlyRate = engagedHours > 0 ? Math.round((totalEarningsToday / engagedHours) * 100) / 100 : 0;
 
     return res.status(200).json({
       success: true,
       stats: {
-        active_hours_today: activeHours,
+        active_hours_today: engagedHours,
+        engaged_hours_today: engagedHours,
         deliveries_today: deliveriesToday,
         total_earnings_today: totalEarningsToday,
         base_pay_today: Math.round(basePayToday * 100) / 100,

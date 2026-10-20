@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
 const app = require('../src/server');
 const { pool } = require('../src/db');
-const { calculatePay, validateRequest } = require('../src/payEngine');
+const { calculatePay, evaluateFloorBlocks, validateRequest } = require('../src/payEngine');
 
 let server;
 let baseUrl;
@@ -32,6 +32,7 @@ before(async () => {
 after(async () => {
   try {
     // Clean up test data
+    await pool.execute("DELETE FROM floor_topups WHERE rider_id LIKE 'rider-test-%'");
     await pool.execute("DELETE FROM earnings WHERE order_id LIKE 'ORD-20261019-9%'");
     await pool.execute("DELETE FROM deliveries WHERE order_id LIKE 'ORD-20261019-9%'");
     await pool.execute("DELETE FROM riders WHERE rider_id LIKE 'rider-test-%'");
@@ -101,14 +102,13 @@ describe('Pure Pay Engine Unit Tests (payEngine.js)', () => {
     const result = calculatePay(request, mockConfig, 0);
 
     // base_rate = 15, distance_pay = 3 * 6 = 18 -> total_delivery_pay = 33
-    // min wage for 1 hour = 70. cumulative so far = 0 + 33 = 33 < 70 -> floor_topup = 37
-    // hourly_earnings_so_far = (33 + 37) / 1 = 70
+    // Under AUDIT-F16: per-delivery ledger has 6 lines; floor top-up is 0.00 inside delivery ledger
     assert.strictEqual(result.base_rate, 15);
     assert.strictEqual(result.distance_pay, 18);
     assert.strictEqual(result.surge_bonus, 0);
     assert.strictEqual(result.wait_compensation, 0);
     assert.strictEqual(result.total_delivery_pay, 33);
-    assert.strictEqual(result.floor_topup, 37);
+    assert.strictEqual(result.floor_topup, 0);
     assert.strictEqual(result.hourly_earnings_so_far, 33);
   });
 
@@ -126,8 +126,7 @@ describe('Pure Pay Engine Unit Tests (payEngine.js)', () => {
     const result = calculatePay(request, mockConfig, 50);
 
     // base = 15, distance = 2 * 6 = 12, surge = 20, wait = 10 -> total_delivery_pay = 57
-    // min wage for 0.5 hr = 35. cumulative = 50 + 57 = 107 > 35 -> floor_topup = 0
-    // hourly = 107 / 0.5 = 214
+    // Under AUDIT-F16: floor_topup is 0 inside delivery ledger
     assert.strictEqual(result.base_rate, 15);
     assert.strictEqual(result.distance_pay, 12);
     assert.strictEqual(result.surge_bonus, 20);
@@ -135,6 +134,116 @@ describe('Pure Pay Engine Unit Tests (payEngine.js)', () => {
     assert.strictEqual(result.total_delivery_pay, 57);
     assert.strictEqual(result.floor_topup, 0);
     assert.strictEqual(result.hourly_earnings_so_far, 214);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// 1b. AUDIT-F16 Statutory Floor Block Engine Unit Tests (Pure Formulas)
+// ════════════════════════════════════════════════════════════════════════════
+describe('AUDIT-F16 Statutory Floor Block Engine Tests (evaluateFloorBlocks)', () => {
+  test('59 min engaged -> no top-up', () => {
+    const orders = [
+      { order_id: 'ORD-1', engaged_minutes: 59, total_delivery_pay: 30 },
+    ];
+    const res = evaluateFloorBlocks(orders, { windowMinutes: 60, minWagePerHour: 70 });
+    assert.strictEqual(res.num_completed_blocks, 0);
+    assert.strictEqual(res.total_topup, 0);
+    assert.strictEqual(res.carried_minutes, 59);
+    assert.strictEqual(res.completed_blocks.length, 0);
+  });
+
+  test('60 min with ₹29.80 -> ₹40.20 top-up', () => {
+    const orders = [
+      { order_id: 'ORD-20261020-0033', engaged_minutes: 60, total_delivery_pay: 29.80 },
+    ];
+    const res = evaluateFloorBlocks(orders, { windowMinutes: 60, minWagePerHour: 70 });
+    assert.strictEqual(res.num_completed_blocks, 1);
+    assert.strictEqual(res.total_topup, 40.20);
+    assert.strictEqual(res.carried_minutes, 0);
+    assert.strictEqual(res.completed_blocks[0].topup_amount, 40.20);
+    assert.strictEqual(res.completed_blocks[0].floor_amount, 70);
+    assert.strictEqual(res.completed_blocks[0].delivery_pay, 29.80);
+  });
+
+  test('block1 ₹120 + block2 ₹30 -> ₹40 top-up (no offset)', () => {
+    const orders = [
+      { order_id: 'ORD-B1', engaged_minutes: 60, total_delivery_pay: 120 },
+      { order_id: 'ORD-B2', engaged_minutes: 60, total_delivery_pay: 30 },
+    ];
+    const res = evaluateFloorBlocks(orders, { windowMinutes: 60, minWagePerHour: 70 });
+    assert.strictEqual(res.num_completed_blocks, 2);
+    assert.strictEqual(res.completed_blocks[0].topup_amount, 0);
+    assert.strictEqual(res.completed_blocks[1].topup_amount, 40);
+    assert.strictEqual(res.total_topup, 40);
+  });
+
+  test('100 min -> 1 block evaluated, 40 carried', () => {
+    const orders = [
+      { order_id: 'ORD-100-A', engaged_minutes: 60, total_delivery_pay: 50 },
+      { order_id: 'ORD-100-B', engaged_minutes: 40, total_delivery_pay: 30 },
+    ];
+    const res = evaluateFloorBlocks(orders, { windowMinutes: 60, minWagePerHour: 70 });
+    assert.strictEqual(res.num_completed_blocks, 1);
+    assert.strictEqual(res.carried_minutes, 40);
+    assert.strictEqual(res.completed_blocks.length, 1);
+    assert.strictEqual(res.completed_blocks[0].engaged_minutes, 60);
+    assert.strictEqual(res.completed_blocks[0].delivery_pay, 50);
+    assert.strictEqual(res.completed_blocks[0].topup_amount, 20);
+  });
+
+  test('re-running evaluation never duplicates (idempotency in MySQL floor_topups)', async () => {
+    const testRider = 'rider-test-floor-idempotent';
+    await pool.execute(
+      `INSERT INTO riders (rider_id, name, phone, zone_id, is_active)
+       VALUES (?, 'Floor Rider', '9999999999', 'KLM-CHK', TRUE)
+       ON DUPLICATE KEY UPDATE is_active = TRUE`,
+      [testRider]
+    );
+
+    const block = {
+      block_index: 1,
+      engaged_minutes: 60,
+      delivery_pay: 29.80,
+      floor_amount: 70.00,
+      topup_amount: 40.20,
+    };
+
+    // First insert
+    await pool.execute(
+      `INSERT INTO floor_topups
+         (rider_id, block_index, shift_date, engaged_minutes, delivery_pay, floor_amount, topup_amount)
+       VALUES (?, ?, CURDATE(), ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         engaged_minutes = VALUES(engaged_minutes),
+         delivery_pay = VALUES(delivery_pay),
+         floor_amount = VALUES(floor_amount),
+         topup_amount = VALUES(topup_amount)`,
+      [testRider, block.block_index, block.engaged_minutes, block.delivery_pay, block.floor_amount, block.topup_amount]
+    );
+
+    // Re-run evaluation insert (simulates idempotency on second run)
+    await pool.execute(
+      `INSERT INTO floor_topups
+         (rider_id, block_index, shift_date, engaged_minutes, delivery_pay, floor_amount, topup_amount)
+       VALUES (?, ?, CURDATE(), ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         engaged_minutes = VALUES(engaged_minutes),
+         delivery_pay = VALUES(delivery_pay),
+         floor_amount = VALUES(floor_amount),
+         topup_amount = VALUES(topup_amount)`,
+      [testRider, block.block_index, block.engaged_minutes, block.delivery_pay, block.floor_amount, block.topup_amount]
+    );
+
+    const [rows] = await pool.execute(
+      'SELECT * FROM floor_topups WHERE rider_id = ? AND block_index = 1',
+      [testRider]
+    );
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(parseFloat(rows[0].topup_amount), 40.20);
+
+    // Clean up
+    await pool.execute('DELETE FROM floor_topups WHERE rider_id = ?', [testRider]);
+    await pool.execute('DELETE FROM riders WHERE rider_id = ?', [testRider]);
   });
 });
 

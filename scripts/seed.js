@@ -161,11 +161,12 @@ async function seed() {
   await mysqlRootConn.query(`USE ${mysqlDatabase}`);
 
   // Clear existing MySQL data for clean baseline
+  await mysqlRootConn.query('DELETE FROM floor_topups');
   await mysqlRootConn.query('DELETE FROM earnings');
   await mysqlRootConn.query('DELETE FROM deliveries');
   await mysqlRootConn.query('DELETE FROM riders');
   await mysqlRootConn.query('DELETE FROM pay_configs');
-  console.log('  ✓ Cleared existing MySQL tables (deliveries, earnings, riders, pay_configs)');
+  console.log('  ✓ Cleared existing MySQL tables (floor_topups, deliveries, earnings, riders, pay_configs)');
 
   // ── Step 2: Seed MySQL Baseline Pay Config (Wait Threshold: 1 minute) ─────
   const baselineConfig = {
@@ -175,6 +176,7 @@ async function seed() {
     wait_threshold_mins: 1, // PRD §10.1 Demo Seed: 1 minute!
     wait_compensation: 10.00,
     min_wage_per_hour: 70.00,
+    floor_window_minutes: 60,
     effective_from: new Date().toISOString().split('T')[0],
     is_active: true,
     created_by: 'system',
@@ -183,8 +185,8 @@ async function seed() {
 
   const [configResult] = await mysqlRootConn.execute(
     `INSERT INTO pay_configs
-      (base_rate, per_km_rate, surge_bonus, wait_threshold_mins, wait_compensation, min_wage_per_hour, effective_from, is_active, created_by, change_reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (base_rate, per_km_rate, surge_bonus, wait_threshold_mins, wait_compensation, min_wage_per_hour, floor_window_minutes, effective_from, is_active, created_by, change_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       baselineConfig.base_rate,
       baselineConfig.per_km_rate,
@@ -192,6 +194,7 @@ async function seed() {
       baselineConfig.wait_threshold_mins,
       baselineConfig.wait_compensation,
       baselineConfig.min_wage_per_hour,
+      baselineConfig.floor_window_minutes,
       baselineConfig.effective_from,
       baselineConfig.is_active,
       baselineConfig.created_by,

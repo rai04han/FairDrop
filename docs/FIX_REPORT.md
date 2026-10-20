@@ -222,4 +222,76 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `fairdrop_app flutter analyze`: No issues found!
 - `fairdrop_app flutter test`: 125/125 tests passed (including 4 new widget tests in `f15_payout_sources_test.dart` asserting zero layout exceptions at 393px width).
 
+---
+
+## F16: Statutory Floor Top-Up Redesign (AUDIT-F16 / R10, R11)
+
+### Root Causes
+1. **Per-Delivery Ledger Distortion**: Prior to F16, statutory wage floor top-up was embedded inside the itemized per-delivery ledger (7th line item), conflating instantaneous order payouts with shift-level hourly wage guarantees.
+2. **Lack of Cumulative Engaged-Time Block Evaluation**: The statutory minimum wage floor (Kerala baseline ₹70/hr, `min_wage_per_hour`) was not evaluated across cumulative engaged time (order assigned/accepted to delivered). Idle online time was improperly conflated, and strong hours were allowed to arbitrarily offset weak hours.
+3. **Stray Hardcoded Dashboard Constant**: In `rider_dashboard_screen.dart:57`, active hours was hardcoded as `double get _activeHours => _totalDeliveries > 0 ? 4.25 : 0.0;`, producing a static `"4.3 hrs active"` metric regardless of actual delivery timestamps.
+
+### Architectural Redesign & Policy Implementation
+1. **Cumulative Engaged-Time Block Evaluation (`evaluateFloorBlocks`)**:
+   - Engaged time is strictly measured as the duration between order assignment/acceptance (`assigned_at`) and delivery completion (`delivered_at`). Idle waiting for dispatches does not count towards engaged time.
+   - Cumulative engaged minutes accumulate across orders throughout the shift date.
+   - A delivery belongs to the block in which it ends on the cumulative engaged timeline.
+   - Floor top-up for a completed block = `max(0, floor − delivery pay in that block)`.
+   - Each completed block is evaluated independently: a high-earning block (e.g. ₹120) does not offset or reduce top-up for a subsequent weak block (e.g. ₹30 with ₹70 floor = ₹40 top-up).
+   - Leftover engaged minutes (< 60 minutes) carry over to subsequent orders; no pro-rata top-up at shift end.
+2. **6-Line Delivery Ledger & Decoupled Floor Record**:
+   - Individual delivery ledgers are reduced from 7 lines to 6 lines: Base Rate, Distance Pay, Surge Bonus, Wait Compensation, Total Delivery Pay, Effective Hourly Rate So Far.
+   - Floor top-up records are stored in a dedicated MySQL table `floor_topups` with unique constraint `uq_rider_date_block (rider_id, shift_date, block_index)`, guaranteeing absolute idempotency.
+   - Floor top-ups are rendered on Home and Dashboard summary metrics, never inside individual delivery breakdowns.
+3. **Engaged Hours Transparency**:
+   - Home "active" time, dashboard average hourly rate, and effective hourly rate are computed strictly from real cumulative engaged hours.
+   - When engaged time is 0, screens render `" — "` instead of `"₹0.0/hr"` or fabricated hours.
+   - Stray `"4.3 hrs"` constant completely eradicated from `RiderDashboardScreen`.
+   - Order 0001 label `"Hourly statutory minimum met"` updated to `"Floor evaluated after 60 min on orders"`.
+4. **Demo Acceleration Override (`FLOOR_WINDOW_MINUTES_OVERRIDE`)**:
+   - Added `floor_window_minutes` to `pay_configs` table (default: 60).
+   - Supported environment variable override `FLOOR_WINDOW_MINUTES_OVERRIDE` in `payRoutes.js` for rapid evaluation testing during live demonstrations without bypassing the 7-day advance notice requirement (`PUT /api/admin/pay-config`). Documented in `docs/DEMO_RUNBOOK.md`.
+
+### Tests Updated and Added
+- **`pay-service/tests/payEngine.test.js`**:
+  - Asserted `floor_topup === 0` in per-delivery `calculatePay` (delivery ledger has 6 lines).
+  - Added 5 required tests for `evaluateFloorBlocks`:
+    - 59 min engaged → no top-up.
+    - 60 min with ₹29.80 delivery pay → ₹40.20 top-up.
+    - Block 1 ₹120 + Block 2 ₹30 → ₹40.00 top-up (no offset).
+    - 100 min engaged → 1 block evaluated, 40 min carried.
+    - Idempotent re-running: MySQL floor top-up upsert never duplicates records.
+- **`fairdrop_app/test/pay_breakdown_test.dart`**: Updated from 7 lines to 6 lines, removing Floor Top-Up from delivery ledger and asserting `"Floor evaluated after 60 min on orders"`.
+- **`fairdrop_app/test/analytics_dashboard_test.dart`**: Removed `breakdown_floor_topup_$order1` assertion from per-delivery ledger, and asserted `" — "` when engaged hours are 0.
+- **`fairdrop_app/test/f15_payout_sources_test.dart`**: Updated delivery ledger assertions from 7 lines to 6 lines, ensuring `Floor Top-Up` is absent from individual delivery breakdowns.
+- **`fairdrop_app/test/order_models_parsing_test.dart`**: Updated new rider shift active time expectation to `" — active in Kollam"` per F16 specification.
+- **`fairdrop_app/test/f16_floor_redesign_test.dart`**: Added widget tests for all 3 touched screens (`PayBreakdownScreen`, `RiderDashboardScreen`, `RiderHomeScreen`) at 393px width with 0 layout exceptions.
+
+### Files Modified
+- `database/mysql/schema.sql`
+- `scripts/seed.js`
+- `pay-service/src/payEngine.js`
+- `pay-service/src/routes/payRoutes.js`
+- `pay-service/tests/payEngine.test.js`
+- `core-service/src/modules/orders/Order.model.js`
+- `core-service/src/modules/orders/order.controller.js`
+- `core-service/src/modules/orders/payClient.js`
+- `core-service/src/modules/riders/rider.controller.js`
+- `fairdrop_app/lib/screens/pay_breakdown_screen.dart`
+- `fairdrop_app/lib/screens/rider_dashboard_screen.dart`
+- `fairdrop_app/lib/screens/rider_home_screen.dart`
+- `fairdrop_app/test/pay_breakdown_test.dart`
+- `fairdrop_app/test/analytics_dashboard_test.dart`
+- `fairdrop_app/test/f15_payout_sources_test.dart`
+- `fairdrop_app/test/order_models_parsing_test.dart`
+- `fairdrop_app/test/f16_floor_redesign_test.dart`
+- `docs/DEMO_RUNBOOK.md`
+- `docs/FIX_REPORT.md`
+
+### Verification Evidence
+- `core-service npm test`: 73/73 tests passed.
+- `pay-service npm test`: 29/29 tests passed.
+- `fairdrop_app flutter analyze`: No issues found!
+- `fairdrop_app flutter test`: 128/128 tests passed.
+
 

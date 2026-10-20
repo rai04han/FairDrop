@@ -40,6 +40,7 @@ CREATE TABLE pay_configs (
     wait_threshold_mins INT             NOT NULL DEFAULT 10,
     wait_compensation   DECIMAL(10,2)   NOT NULL DEFAULT 10.00,
     min_wage_per_hour   DECIMAL(10,2)   NOT NULL DEFAULT 70.00,
+    floor_window_minutes INT            NOT NULL DEFAULT 60,
     effective_from      DATE            NOT NULL,
     is_active           BOOLEAN         NOT NULL DEFAULT FALSE,
     created_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -73,6 +74,7 @@ CREATE TABLE deliveries (
     is_surge_active         BOOLEAN         NOT NULL DEFAULT FALSE,
     restaurant_wait_mins    INT             NOT NULL DEFAULT 0,
     active_hours_today      DECIMAL(5,2)    NOT NULL,
+    engaged_minutes         DECIMAL(6,2)    NOT NULL DEFAULT 0.00,
     delay_type              ENUM('traffic', 'restaurant', 'railway', 'none') NOT NULL DEFAULT 'none',
     delay_verified          BOOLEAN         NOT NULL DEFAULT FALSE,
     delay_source            ENUM('system_log', 'api_mock', 'none') NOT NULL DEFAULT 'none',
@@ -109,6 +111,26 @@ CREATE TABLE earnings (
 );
 
 -- ─────────────────────────────────────────────
+-- floor_topups (AUDIT-F16)
+-- Statutory floor top-ups evaluated per completed 60m block of engaged time.
+-- Unique per rider, shift_date, and block_index (idempotent).
+-- ─────────────────────────────────────────────
+CREATE TABLE floor_topups (
+    topup_id                INT             NOT NULL AUTO_INCREMENT,
+    rider_id                VARCHAR(36)     NOT NULL,
+    block_index             INT             NOT NULL,
+    shift_date              DATE            NOT NULL,
+    engaged_minutes         INT             NOT NULL,
+    delivery_pay            DECIMAL(10,2)   NOT NULL,
+    floor_amount            DECIMAL(10,2)   NOT NULL,
+    topup_amount            DECIMAL(10,2)   NOT NULL,
+    created_at              TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (topup_id),
+    UNIQUE KEY uq_rider_date_block (rider_id, shift_date, block_index),
+    FOREIGN KEY (rider_id) REFERENCES riders(rider_id)
+);
+
+-- ─────────────────────────────────────────────
 -- Indexes for dashboard and analytics queries
 -- ─────────────────────────────────────────────
 CREATE INDEX idx_earnings_rider_date
@@ -116,3 +138,7 @@ CREATE INDEX idx_earnings_rider_date
 
 CREATE INDEX idx_deliveries_rider_date
     ON deliveries (rider_id, created_at);
+
+CREATE INDEX idx_floor_topups_rider_date
+    ON floor_topups (rider_id, shift_date);
+

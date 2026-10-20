@@ -45,20 +45,20 @@ void main() {
       // Verify Screen renders
       expect(find.byType(PayBreakdownScreen), findsOneWidget);
 
-      // Verify 7 Line Items
+      // Verify 6 Line Items (AUDIT-F16)
       expect(find.text('Base Rate'), findsOneWidget);
       expect(find.text('Distance Pay'), findsOneWidget);
       expect(find.text('Surge Bonus'), findsOneWidget);
       expect(find.text('Wait Compensation'), findsOneWidget);
-      expect(find.text('Floor Top-Up'), findsOneWidget);
       expect(find.text('Total Delivery Pay'), findsOneWidget);
       expect(find.text('Effective Hourly Rate So Far'), findsOneWidget);
+      expect(find.text('Floor Top-Up'), findsNothing);
 
-      // Verify amounts and zero lines with reasons (FR-22)
+      // Verify amounts and zero lines with reasons (FR-22 / AUDIT-F16)
       expect(find.text('₹15.00'), findsOneWidget);
       expect(find.text('₹7.50'), findsOneWidget);
       expect(find.text('No surge active in zone'), findsOneWidget);
-      expect(find.text('Hourly statutory minimum met'), findsOneWidget);
+      expect(find.text('Floor evaluated after 60 min on orders'), findsOneWidget);
       expect(find.text('₹32.50'), findsWidgets);
       expect(find.text('₹65.00/hr'), findsOneWidget);
     });

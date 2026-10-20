@@ -544,7 +544,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
 
   // ── 5. Total Payout Hero Card ────────────────────────────────────────────
   Widget _buildTotalHeroCard() {
-    final totalPay = _payResult!.totalWithTopup;
+    final totalPay = _payResult!.totalDeliveryPay;
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -743,18 +743,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           ),
           const Divider(height: 20, color: FairDropColors.mintBorder),
 
-          // 6. Floor Top-Up (FR-22: explicit zero reason)
-          _buildLedgerLine(
-            title: 'Floor Top-Up',
-            amount: r.floorTopup,
-            subtitle: r.floorTopup > 0
-                ? 'Statutory shortfall top-up'
-                : 'Hourly statutory minimum met',
-            zeroReason: 'Hourly statutory minimum met',
-          ),
-          const Divider(height: 20, color: FairDropColors.mintBorder),
-
-          // 7. Effective Hourly Rate So Far
+          // 6. Effective Hourly Rate So Far (AUDIT-F16)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -771,7 +760,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
                       ),
                     ),
                     Text(
-                      'Based on cumulative active hours today',
+                      'Floor evaluated after 60 min on orders',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         color: FairDropColors.slateMuted,
@@ -782,7 +771,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                '${formatCurrency(r.hourlyEarningsSoFar)}/hr',
+                r.hourlyEarningsSoFar > 0 ? '${formatCurrency(r.hourlyEarningsSoFar)}/hr' : '—',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,

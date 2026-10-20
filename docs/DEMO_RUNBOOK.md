@@ -98,6 +98,18 @@ npm run smoke
 ```
 *Expected Output:* `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY` (exit code 0).
 
+### Step 2.5: Floor Evaluation Window Acceleration (Demos Only)
+In production, statutory minimum wage floor top-up (`min_wage_per_hour = ₹70.00`) is evaluated strictly per **completed 60-minute block of cumulative engaged time** across deliveries (FR-32, AUDIT-F16).
+For live examiner presentations where waiting for 60 cumulative engaged minutes is impractical, `pay-service` supports an environment variable override:
+
+```powershell
+# Accelerate statutory floor block evaluation to 1 minute for live demonstration:
+$env:FLOOR_WINDOW_MINUTES_OVERRIDE="1"
+```
+
+> [!NOTE]
+> `FLOOR_WINDOW_MINUTES_OVERRIDE` is an ephemeral demo-runner override. It accelerates the window trigger for live evaluation without modifying baseline wage rules or bypassing the 7-day advance notice rule for administrative pay configuration changes (`PUT /api/admin/pay-config`).
+
 ---
 
 ## 3. Seed Accounts & Credentials Reference

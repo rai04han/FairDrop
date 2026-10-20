@@ -140,6 +140,10 @@ const orderSchema = new mongoose.Schema(
     },
 
     // ── Timestamps for lifecycle stages (FR-18, FR-67, FR-69) ───────────
+    assigned_at: {
+      type: Date,
+      default: null,
+    },
     accepted_at: {
       type: Date,
       default: null,

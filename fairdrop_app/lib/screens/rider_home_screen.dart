@@ -40,7 +40,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   double _todayEarnings = 0.0;
   double _activeHoursToday = 0.0;
   double _hourlyRate = 0.0;
-  double? _floorValue;
+  double? _floorValue = 70.0;
   int _deliveriesToday = 0;
   String _currentZone = 'Chinnakada & Asramam (KL-02)';
 
@@ -631,7 +631,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             children: [
               Expanded(
                 child: Text(
-                  "Today's Shift • ${_activeHoursToday.toStringAsFixed(1)}h active in Kollam",
+                  _activeHoursToday > 0
+                      ? "Today's Shift • ${_activeHoursToday.toStringAsFixed(1)}h active in Kollam"
+                      : "Today's Shift • — active in Kollam",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -749,9 +751,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
-                      _todayEarnings > 0 && _hourlyRate >= _floorValue!
+                      _activeHoursToday >= 1.0 && _todayEarnings > 0 && _hourlyRate >= _floorValue!
                           ? 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr met'
-                          : 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr baseline',
+                          : 'Floor evaluated after 60 min on orders',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 10,

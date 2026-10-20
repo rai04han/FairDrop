@@ -265,8 +265,8 @@ void main() {
       expect(find.text('+₹50'), findsNothing);
       expect(find.textContaining('21.0 km @ ₹10/km'), findsNothing);
 
-      // Verify real zero shift statistics for new rider
-      expect(find.textContaining('0.0h active in Kollam'), findsOneWidget);
+      // Verify real zero shift statistics for new rider (F16: show "—" when engaged time is 0)
+      expect(find.textContaining('— active in Kollam'), findsOneWidget);
       expect(find.text('Calculated from 0 completed drops • Zero hidden deductions'), findsOneWidget);
 
       // Verify no fake incoming offer card

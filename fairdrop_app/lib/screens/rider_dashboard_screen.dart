@@ -54,7 +54,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   double _avgHourlyRate = 0.0;
   int _totalDeliveries = 0;
   double _totalFloorTopup = 0.0;
-  double get _activeHours => _totalDeliveries > 0 ? 4.25 : 0.0;
+  double _engagedHours = 0.0;
 
   // Track expanded delivery items
   final Set<String> _expandedOrderIds = {};
@@ -94,9 +94,13 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     _applyEarnings([]);
   }
 
-  void _applyEarnings(List<dynamic> earnings) {
+  void _applyEarnings(
+    List<dynamic> earnings, {
+    double? totalFloorTopup,
+    double? engagedHours,
+  }) {
     double totalEarned = 0;
-    double totalFloorTopup = 0;
+    double parsedTopup = totalFloorTopup ?? 0;
     double totalHourlyRate = 0;
 
     for (final e in earnings) {
@@ -104,17 +108,18 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
       final topup = double.tryParse(e['floor_topup'].toString()) ?? 0;
       final hourly = double.tryParse(e['hourly_earnings_so_far'].toString()) ?? 0;
 
-      totalEarned += deliveryPay + topup;
-      totalFloorTopup += topup;
+      totalEarned += deliveryPay;
+      parsedTopup += topup;
       totalHourlyRate += hourly;
     }
 
     setState(() {
       _earnings = earnings;
-      _totalEarned = totalEarned;
       _totalDeliveries = earnings.length;
-      _totalFloorTopup = totalFloorTopup;
-      _avgHourlyRate = earnings.isNotEmpty ? totalHourlyRate / earnings.length : 0.0;
+      _totalFloorTopup = parsedTopup;
+      _totalEarned = totalEarned + _totalFloorTopup;
+      _engagedHours = engagedHours ?? (_totalDeliveries > 0 ? (totalHourlyRate > 0 ? totalEarned / (totalHourlyRate / earnings.length) : 0.0) : 0.0);
+      _avgHourlyRate = _engagedHours > 0 ? _totalEarned / _engagedHours : 0.0;
       _isLoading = false;
       _errorMessage = null;
 
@@ -141,9 +146,11 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
         const Duration(seconds: 2),
       );
       final rawList = response['earnings'] as List<dynamic>? ?? [];
+      final topup = double.tryParse(response['total_floor_topup']?.toString() ?? '') ?? 0.0;
+      final engagedHrs = double.tryParse(response['engaged_hours']?.toString() ?? '') ?? 0.0;
 
       if (mounted) {
-        _applyEarnings(rawList);
+        _applyEarnings(rawList, totalFloorTopup: topup, engagedHours: engagedHrs);
       }
     } catch (e) {
       if (mounted) {
@@ -271,7 +278,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
               child: _buildStatCard(
                 icon: Icons.speed_rounded,
                 label: 'Avg Hourly Rate',
-                value: '₹${_avgHourlyRate.toStringAsFixed(1)}/hr',
+                value: _engagedHours > 0
+                    ? '₹${_avgHourlyRate.toStringAsFixed(1)}/hr'
+                    : '—',
                 color: _avgHourlyRate >= 70.0
                     ? FairDropColors.brandGreen
                     : FairDropColors.warningAmber,
@@ -379,9 +388,11 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                 Text(
                   _totalDeliveries == 0
                       ? 'Statutory Floor Guarantee: Protected'
-                      : isProtected
-                          ? 'Statutory Floor Guarantee: Protected'
-                          : 'Statutory Floor: Auto-Topup Active',
+                      : _engagedHours < 1.0
+                          ? 'Floor evaluated after 60 min on orders'
+                          : isProtected
+                              ? 'Statutory Floor Guarantee: Protected'
+                              : 'Statutory Floor: Auto-Topup Active',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -389,7 +400,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                   ),
                 ),
                 Text(
-                  'Minimum guaranteed wage: ₹${statutoryFloor.toStringAsFixed(0)}/hr • ${_activeHours.toStringAsFixed(1)} hrs active',
+                  _engagedHours > 0
+                      ? 'Minimum guaranteed wage: ₹${statutoryFloor.toStringAsFixed(0)}/hr • ${_engagedHours.toStringAsFixed(1)} hrs active'
+                      : 'Minimum guaranteed wage: ₹${statutoryFloor.toStringAsFixed(0)}/hr • —',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
                     color: FairDropColors.slateMuted,
@@ -526,20 +539,25 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.receipt_long_rounded,
-                      color: FairDropColors.brandGreen, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Itemized Delivery History',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: FairDropColors.brandNavy,
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.receipt_long_rounded,
+                        color: FairDropColors.brandGreen, size: 20),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'Itemized Delivery History',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: FairDropColors.brandNavy,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               Text(
                 '${_earnings.length} Orders',
@@ -553,7 +571,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'Tap any delivery to expand the full 7-itemized ledger breakdown (FR-31)',
+            'Tap any delivery to expand the full 6-itemized ledger breakdown (FR-31)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: FairDropColors.slateMuted,
@@ -592,9 +610,8 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     final surgeBonus = double.tryParse(item['surge_bonus']?.toString() ?? '0') ?? 0.0;
     final waitComp = double.tryParse(item['wait_compensation']?.toString() ?? '0') ?? 0.0;
     final deliveryPay = double.tryParse(item['total_delivery_pay']?.toString() ?? '0') ?? 0.0;
-    final floorTopup = double.tryParse(item['floor_topup']?.toString() ?? '0') ?? 0.0;
     final hourlySoFar = double.tryParse(item['hourly_earnings_so_far']?.toString() ?? '0') ?? 0.0;
-    final totalPay = deliveryPay + floorTopup;
+    final totalPay = deliveryPay;
 
     final isExpanded = _expandedOrderIds.contains(orderId);
 
@@ -645,44 +662,47 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                             color: FairDropColors.brandNavy,
                           ),
                         ),
-                        Row(
-                          children: [
-                            Text(
-                              '${distanceKm.toStringAsFixed(1)} km',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
-                                color: FairDropColors.slateMuted,
-                              ),
-                            ),
-                            if (isSurge) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: FairDropColors.paySurge.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  'SURGE',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: FairDropColors.paySurge,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            if (waitMins > 0) ...[
-                              const SizedBox(width: 6),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
                               Text(
-                                '• ${waitMins}m wait',
+                                '${distanceKm.toStringAsFixed(1)} km',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 11,
                                   color: FairDropColors.slateMuted,
                                 ),
                               ),
+                              if (isSurge) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: FairDropColors.paySurge.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    'SURGE',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: FairDropColors.paySurge,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (waitMins > 0) ...[
+                                const SizedBox(width: 6),
+                                Text(
+                                  '• ${waitMins}m wait',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11,
+                                    color: FairDropColors.slateMuted,
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ],
                     ),
@@ -698,15 +718,6 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                           color: FairDropColors.brandNavy,
                         ),
                       ),
-                      if (floorTopup > 0)
-                        Text(
-                          '+₹${floorTopup.toStringAsFixed(2)} top-up',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: FairDropColors.brandGreen,
-                          ),
-                        ),
                     ],
                   ),
                   const SizedBox(width: 6),
@@ -772,28 +783,20 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                     color: FairDropColors.payWait,
                   ),
 
-                  // 5. Floor Top-up
-                  _buildBreakdownRow(
-                    key: Key('breakdown_floor_topup_$orderId'),
-                    label: '5. Minimum Wage Floor Top-up',
-                    value: '₹${floorTopup.toStringAsFixed(2)}',
-                    color: FairDropColors.payGuarantee,
-                  ),
-
-                  // 6. Total Delivery Pay
+                  // 5. Total Delivery Pay
                   _buildBreakdownRow(
                     key: Key('breakdown_total_pay_$orderId'),
-                    label: '6. Net Total Delivery Payout',
+                    label: '5. Net Total Delivery Payout',
                     value: '₹${totalPay.toStringAsFixed(2)}',
                     color: FairDropColors.brandNavy,
                     isBold: true,
                   ),
 
-                  // 7. Hourly Rate So Far
+                  // 6. Hourly Rate So Far
                   _buildBreakdownRow(
                     key: Key('breakdown_hourly_rate_$orderId'),
-                    label: '7. Cumulative Hourly Rate So Far',
-                    value: '₹${hourlySoFar.toStringAsFixed(1)}/hr',
+                    label: '6. Cumulative Hourly Rate So Far',
+                    value: hourlySoFar > 0 ? '₹${hourlySoFar.toStringAsFixed(1)}/hr' : '—',
                     color: FairDropColors.brandGreen,
                     isBold: true,
                   ),

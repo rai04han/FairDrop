@@ -73,7 +73,7 @@ void main() {
       expect(find.byKey(const Key('rider_dashboard_refresh_indicator')), findsOneWidget);
     });
 
-    testWidgets('Expandable per-delivery row reveals full 7-itemized ledger breakdown (FR-31)', (tester) async {
+    testWidgets('Expandable per-delivery row reveals full 6-itemized ledger breakdown (FR-31)', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: RiderDashboardScreen(
@@ -89,12 +89,12 @@ void main() {
       expect(order1Tile, findsOneWidget);
 
       // Order 1 is expanded by default (or tap header to ensure expanded)
-      // Verify all 7 itemized breakdown rows exist for Order 1:
+      // Verify all 6 itemized breakdown rows exist for Order 1 (AUDIT-F16):
       expect(find.byKey(const Key('breakdown_base_rate_$order1')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_distance_pay_$order1')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_surge_bonus_$order1')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_wait_compensation_$order1')), findsOneWidget);
-      expect(find.byKey(const Key('breakdown_floor_topup_$order1')), findsOneWidget);
+      expect(find.byKey(const Key('breakdown_floor_topup_$order1')), findsNothing);
       expect(find.byKey(const Key('breakdown_total_pay_$order1')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_hourly_rate_$order1')), findsOneWidget);
 
@@ -103,8 +103,8 @@ void main() {
       expect(find.text('₹30.00'), findsOneWidget); // Distance pay
       expect(find.text('₹10.00'), findsOneWidget); // Surge bonus
       expect(find.text('₹15.00'), findsOneWidget); // Wait pay
-      expect(find.text('₹5.00'), findsWidgets);   // Floor topup
-      expect(find.text('₹80.00'), findsWidgets);  // Total payout & hourly
+      expect(find.text('₹75.00'), findsWidgets);  // Total delivery payout
+      expect(find.text('₹80.0/hr'), findsOneWidget);  // Hourly rate so far
 
       // Order 2 is initially collapsed; ensure visible and tap to expand it
       const order2 = 'ORD-KLM-TEST-2';
@@ -184,7 +184,7 @@ void main() {
       expect(find.byKey(const Key('summary_total_earned')), findsOneWidget);
       expect(find.text('₹0.00'), findsWidgets);
       expect(find.text('0'), findsWidgets);
-      expect(find.text('₹0.0/hr'), findsOneWidget);
+      expect(find.text('—'), findsWidgets);
       expect(find.text('No completed deliveries yet today.'), findsOneWidget);
       expect(find.textContaining('NaN'), findsNothing);
       expect(find.textContaining('Infinity'), findsNothing);

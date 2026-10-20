@@ -21,6 +21,11 @@ const env = require('../../config/env');
  * @throws {Error} If pay-service is unreachable or returns an error
  */
 async function calculatePay(order, activeHoursToday, token = null) {
+  const assignedTime = order.assigned_at || order.accepted_at || order.created_at;
+  const deliveredTime = order.delivered_at || new Date();
+  const diffMs = assignedTime ? (new Date(deliveredTime).getTime() - new Date(assignedTime).getTime()) : 0;
+  const engagedMinutes = Math.max(0, Math.round((diffMs / 60000) * 100) / 100);
+
   const payload = {
     rider_id: order.rider_id.toString(),
     order_id: order.order_id,
@@ -28,6 +33,9 @@ async function calculatePay(order, activeHoursToday, token = null) {
     is_surge_active: order.is_surge_active,
     restaurant_wait_mins: order.restaurant_wait_mins,
     active_hours_today: activeHoursToday,
+    assigned_at: assignedTime,
+    delivered_at: deliveredTime,
+    engaged_minutes: engagedMinutes,
     delay_context: {
       type: order.delay_context?.type || 'none',
       verified: order.delay_context?.verified || false,
