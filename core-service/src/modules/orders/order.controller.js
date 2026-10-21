@@ -57,6 +57,21 @@ async function createOrder(req, res) {
       delay_context,
     } = req.body;
 
+    if (delay_context) {
+      if (delay_context.type && !Order.VALID_DELAY_TYPES.includes(delay_context.type)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid delay_context.type: "${delay_context.type}". Must be one of: ${Order.VALID_DELAY_TYPES.join(', ')}`,
+        });
+      }
+      if (delay_context.source && !Order.VALID_DELAY_SOURCES.includes(delay_context.source)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid delay_context.source: "${delay_context.source}". Must be one of: ${Order.VALID_DELAY_SOURCES.join(', ')}`,
+        });
+      }
+    }
+
     // ── 1. Validate required fields ───────────────────────────────────
     if (!restaurant_id || !items || !delivery_address) {
       return res.status(400).json({
@@ -229,6 +244,12 @@ async function createOrder(req, res) {
       order,
     });
   } catch (error) {
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
     console.error('Create order error:', error.message);
     res.status(500).json({
       success: false,
@@ -413,6 +434,23 @@ async function updateStatus(req, res) {
       });
     }
 
+    // ── Validate delay_context early (AUDIT-F22) ─────────────────────
+    if (delay_context) {
+      if (delay_context.type && !Order.VALID_DELAY_TYPES.includes(delay_context.type)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid delay_context.type: "${delay_context.type}". Must be one of: ${Order.VALID_DELAY_TYPES.join(', ')}`,
+        });
+      }
+      if (delay_context.source && !Order.VALID_DELAY_SOURCES.includes(delay_context.source)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid delay_context.source: "${delay_context.source}". Must be one of: ${Order.VALID_DELAY_SOURCES.join(', ')}`,
+        });
+      }
+      order.delay_context = delay_context;
+    }
+
     // ── Idempotent delivery completion (FR-74) ───────────────────────
     if (order.status === 'delivered' && new_status === 'delivered') {
       return res.status(200).json({
@@ -433,70 +471,46 @@ async function updateStatus(req, res) {
 
     const now = new Date();
 
-    // ── Update order fields ──────────────────────────────────────────
-    order.status = new_status;
-    order.status_history.push({
-      status: new_status,
-      changed_at: now,
-      changed_by: req.user.id,
-    });
-
-    if (new_status === 'assigned') {
-      if (!order.rider_id) {
-        order.rider_id = req.user.id;
-      }
-      order.rider_ack = 'accepted';
-      order.assigned_at = now;
-    } else if (new_status === 'arrived') {
-      order.arrived_at = now;
-    } else if (new_status === 'picked_up') {
-      order.picked_up_at = now;
-      // Server-computed restaurant wait time rounded up to whole minutes (FR-18, D10)
-      if (order.arrived_at) {
-        const elapsedMs = order.picked_up_at.getTime() - new Date(order.arrived_at).getTime();
-        const computedMins = Math.ceil(Math.max(0, elapsedMs) / 60000);
-        order.restaurant_wait_mins = restaurant_wait_mins !== undefined
-          ? Math.max(computedMins, restaurant_wait_mins)
-          : computedMins;
-      } else if (restaurant_wait_mins !== undefined) {
-        order.restaurant_wait_mins = restaurant_wait_mins;
-      }
-    } else if (new_status === 'delivered') {
-      order.delivered_at = now;
-    }
-
     if (restaurant_wait_mins !== undefined && new_status !== 'picked_up') {
       order.restaurant_wait_mins = restaurant_wait_mins;
     }
-    if (delay_context) {
-      order.delay_context = delay_context;
-    }
 
-    // ── On delivery: call Pay Engine & update zone if out-of-zone (FR-73, D3) ──
+    // ── On delivery: call Pay Engine & update zone if out-of-zone (FR-73, D3, AUDIT-F22) ──
     if (new_status === 'delivered') {
       const callerToken = req.headers.authorization;
-      try {
-        const rider = await User.findById(order.rider_id);
-        const activeHours = rider?.rider_profile?.active_hours_today
-          ? Math.max(rider.rider_profile.active_hours_today, 0.0001)
-          : 1;
+      const rider = await User.findById(order.rider_id);
+      const activeHours = rider?.rider_profile?.active_hours_today
+        ? Math.max(rider.rider_profile.active_hours_today, 0.0001)
+        : 1;
 
-        const payResult = await calculatePay(order, activeHours, callerToken);
-        order.pay_calculation_result = payResult;
-        order.pay_status = 'calculated';
+      order.delivered_at = now;
+
+      let payResult;
+      try {
+        payResult = await calculatePay(order, activeHours, callerToken);
       } catch (payError) {
         console.error('Pay calculation failed:', payError.message);
-        order.pay_calculation_result = {
-          error: true,
-          message: payError.message,
-          note: 'Pay calculation failed. Needs manual review.',
-        };
-        order.pay_status = 'pending';
+        // Failure safety (AUDIT-F22): keep previous status, do not half-update order, return clear error
+        order.delivered_at = null;
+        return res.status(502).json({
+          success: false,
+          message: `Pay calculation failed: ${payError.message}. Order status remains "${order.status}".`,
+          error: payError.message,
+        });
       }
+
+      // Payout computed successfully — now transition order to delivered
+      order.status = 'delivered';
+      order.status_history.push({
+        status: 'delivered',
+        changed_at: now,
+        changed_by: req.user.id,
+      });
+      order.pay_calculation_result = payResult;
+      order.pay_status = 'calculated';
 
       // Update rider's current_zone_id if out-of-zone delivery (FR-73, D3)
       try {
-        const rider = await User.findById(order.rider_id);
         if (rider && rider.rider_profile) {
           const dropZone = await findZoneForLocation(
             order.delivery_address.latitude,
@@ -511,12 +525,10 @@ async function updateStatus(req, res) {
       } catch (zoneErr) {
         console.error('Failed to update rider zone after delivery:', zoneErr.message);
       }
-    }
 
-    await order.save();
+      await order.save();
 
-    // FR-60, D6: Allocate queued pending orders as soon as a rider completes delivery
-    if (new_status === 'delivered') {
+      // FR-60, D6: Allocate queued pending orders as soon as a rider completes delivery
       try {
         const unallocatedOrders = await Order.find({
           rider_id: null,
@@ -550,7 +562,45 @@ async function updateStatus(req, res) {
       } catch (allocErr) {
         console.error('FR-60 Allocation on delivery completion error:', allocErr.message);
       }
+
+      return res.json({
+        success: true,
+        message: `Order ${order.order_id} status updated to "delivered".`,
+        order,
+      });
     }
+
+    // ── Update order fields for non-delivered statuses ────────────────
+    order.status = new_status;
+    order.status_history.push({
+      status: new_status,
+      changed_at: now,
+      changed_by: req.user.id,
+    });
+
+    if (new_status === 'assigned') {
+      if (!order.rider_id) {
+        order.rider_id = req.user.id;
+      }
+      order.rider_ack = 'accepted';
+      order.assigned_at = now;
+    } else if (new_status === 'arrived') {
+      order.arrived_at = now;
+    } else if (new_status === 'picked_up') {
+      order.picked_up_at = now;
+      // Server-computed restaurant wait time rounded up to whole minutes (FR-18, D10)
+      if (order.arrived_at) {
+        const elapsedMs = order.picked_up_at.getTime() - new Date(order.arrived_at).getTime();
+        const computedMins = Math.ceil(Math.max(0, elapsedMs) / 60000);
+        order.restaurant_wait_mins = restaurant_wait_mins !== undefined
+          ? Math.max(computedMins, restaurant_wait_mins)
+          : computedMins;
+      } else if (restaurant_wait_mins !== undefined) {
+        order.restaurant_wait_mins = restaurant_wait_mins;
+      }
+    }
+
+    await order.save();
 
     res.json({
       success: true,
@@ -558,6 +608,12 @@ async function updateStatus(req, res) {
       order,
     });
   } catch (error) {
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
     console.error('Update status error:', error.message);
     res.status(500).json({ success: false, message: 'Server error.' });
   }

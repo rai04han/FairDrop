@@ -53,17 +53,17 @@ function validateRequest(req) {
     throw new Error('restaurant_wait_mins must be a non-negative number');
   }
 
-  const validDelayTypes = ['traffic', 'restaurant', 'railway', 'none'];
-  if (!validDelayTypes.includes(req.delay_context.type)) {
+  const VALID_DELAY_TYPES = ['traffic', 'restaurant', 'railway', 'weather', 'none'];
+  if (!VALID_DELAY_TYPES.includes(req.delay_context.type)) {
     throw new Error(
-      `Invalid delay_context.type: "${req.delay_context.type}". Must be one of: ${validDelayTypes.join(', ')}`
+      `Invalid delay_context.type: "${req.delay_context.type}". Must be one of: ${VALID_DELAY_TYPES.join(', ')}`
     );
   }
 
-  const validSources = ['system_log', 'api_mock', 'rider_report', 'none'];
-  if (!validSources.includes(req.delay_context.source)) {
+  const VALID_DELAY_SOURCES = ['rider_report', 'system_log', 'api_mock', 'none'];
+  if (!VALID_DELAY_SOURCES.includes(req.delay_context.source)) {
     throw new Error(
-      `Invalid delay_context.source: "${req.delay_context.source}". Must be one of: ${validSources.join(', ')}`
+      `Invalid delay_context.source: "${req.delay_context.source}". Must be one of: ${VALID_DELAY_SOURCES.join(', ')}`
     );
   }
 }
@@ -246,4 +246,14 @@ function round2(value) {
   return Math.round(value * 100) / 100;
 }
 
-module.exports = { calculatePay, evaluateFloorBlocks, validateRequest, round2 };
+const VALID_DELAY_TYPES = ['traffic', 'restaurant', 'railway', 'weather', 'none'];
+const VALID_DELAY_SOURCES = ['rider_report', 'system_log', 'api_mock', 'none'];
+
+module.exports = {
+  calculatePay,
+  evaluateFloorBlocks,
+  validateRequest,
+  round2,
+  VALID_DELAY_TYPES,
+  VALID_DELAY_SOURCES,
+};

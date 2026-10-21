@@ -160,6 +160,17 @@ async function seed() {
 
   await mysqlRootConn.query(`USE ${mysqlDatabase}`);
 
+  // Ensure ENUMs in deliveries table are up-to-date (AUDIT-F22)
+  try {
+    await mysqlRootConn.query(`
+      ALTER TABLE deliveries 
+        MODIFY COLUMN delay_type ENUM('traffic', 'restaurant', 'railway', 'weather', 'none') NOT NULL DEFAULT 'none',
+        MODIFY COLUMN delay_source ENUM('rider_report', 'system_log', 'api_mock', 'none') NOT NULL DEFAULT 'none'
+    `);
+  } catch (enumErr) {
+    // Ignore if table does not exist yet or already altered
+  }
+
   // Clear existing MySQL data for clean baseline
   await mysqlRootConn.query('DELETE FROM floor_topups');
   await mysqlRootConn.query('DELETE FROM earnings');

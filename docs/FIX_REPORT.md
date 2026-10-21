@@ -294,4 +294,55 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `fairdrop_app flutter analyze`: No issues found!
 - `fairdrop_app flutter test`: 128/128 tests passed.
 
+---
+
+## F22: Delay Flow Enum Alignment & Delivery Failure Safety (AUDIT-F22)
+
+### 1. Delay Field Tracing Across Layers Matrix
+
+| Layer | Field Name | Allowed / Accepted Values | What Callers Send | Defect / Failure Mode |
+|---|---|---|---|---|
+| **Flutter App** (`active_delivery_screen.dart`, `order.dart`) | `delay_type` (alias: `type`) | `'traffic'`, `'restaurant'`, `'railway'`, `'weather'`, `'none'` | Dialog options: `'traffic'`, `'restaurant'`, `'railway'`, `'weather'` | Allowed `'weather'`, but backend didn't accept it. |
+| **Flutter App** (`active_delivery_screen.dart`, `order.dart`) | `source` (alias: `delay_source`) | `'rider_report'`, `'system_log'`, `'api_mock'`, `'none'` | Hardcoded: `'rider_report'` | Mongoose threw validation error; MySQL truncated and threw 500. |
+| **core-service Mongoose** (`Order.model.js`) | `delay_context.delay_type` | Prior: `['traffic', 'restaurant', 'railway', 'none']`<br>Fixed: `['traffic', 'restaurant', 'railway', 'weather', 'none']` | Sent by app via `delay_context.delay_type` or `delay_type` | Rejected `'weather'` with Mongoose ValidationError. |
+| **core-service Mongoose** (`Order.model.js`) | `delay_context.source` | Prior: `['gps', 'manual', 'sensor', 'system', 'none']`<br>Fixed: `['rider_report', 'system_log', 'api_mock', 'none']` | Sent by app as `'rider_report'` | Threw `Order validation failed: delay_context.source: 'rider_report' is not a valid enum value`. |
+| **core-to-pay Request** (`payClient.js` / `order.controller.js`) | `delay_type`, `delay_source`, `delay_minutes`, `wait_time_minutes` | Transmits `order.delay_context` values directly | Transmitted `delay_source: 'rider_report'`, `delay_type` | Passed values down into `pay-service`. |
+| **pay-service Validation** (`payEngine.js`) | `delay_type`, `delay_source` | Prior: `delay_source` required `['gps', 'manual', 'sensor', 'system', 'none']`<br>Fixed: `['rider_report', 'system_log', 'api_mock', 'none']` | Received `delay_source: 'rider_report'` | Threw validation error: `"Invalid delay_source: rider_report"`. |
+| **MySQL Table** (`deliveries` table) | `delay_type`, `delay_source` | Prior: `delay_source ENUM('gps','manual','sensor','system','none')`<br>Fixed: `ENUM('rider_report','system_log','api_mock','none')` | Inserted from calculation payload | Threw `Data truncated for column 'delay_source'` (MySQL Error 1265) under strict SQL mode. |
+
+### 2. Comprehensive Field Cross-Layer Comparison (core-service to pay-service)
+
+| Payload Field | core-service Type & Value Source | pay-service Validation | MySQL Column Type | Compatibility Status |
+|---|---|---|---|---|
+| `order_id` | String (`String(order._id)`) | Non-empty string/number | `VARCHAR(64) PRIMARY KEY` | Compatible |
+| `rider_id` | String (`String(rider.rider_id \|\| rider._id)`) | Non-empty string/number | `VARCHAR(64) NOT NULL` | Compatible |
+| `restaurant_id` | String (`String(order.restaurant_id)`) | String/number | `VARCHAR(64) NULL` | Compatible |
+| `zone_id` | String (`order.zone_id \|\| 'KLM-CHK'`) | String | `VARCHAR(32) NOT NULL DEFAULT 'KLM-CHK'` | Compatible |
+| `distance_km` | Number (`order.pricing?.delivery_distance_km \|\| 0`) | Number >= 0 | `DECIMAL(6,2) NOT NULL` | Compatible |
+| `pickup_lat` / `pickup_lng` | Number or null | Optional coordinate | Memory / calculation | Compatible |
+| `drop_lat` / `drop_lng` | Number or null | Optional coordinate | Memory / calculation | Compatible |
+| `assigned_at` | ISO Date String or null | Optional Date parseable | `TIMESTAMP NULL` | Compatible |
+| `delivered_at` | ISO Date String or null | Optional Date parseable | `TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP` | Compatible |
+| `wait_time_minutes` | Number (`delay_context?.wait_time_minutes \|\| 0`) | Number >= 0 | `INT NOT NULL DEFAULT 0` | Compatible |
+| `delay_type` | String (`delay_context?.delay_type \|\| 'none'`) | `VALID_DELAY_TYPES` | `ENUM('traffic','restaurant','railway','weather','none')` | **Fixed & Aligned** |
+| `delay_source` | String (`delay_context?.source \|\| 'none'`) | `VALID_DELAY_SOURCES` | `ENUM('rider_report','system_log','api_mock','none')` | **Fixed & Aligned** |
+| `delay_minutes` | Number (`delay_context?.delay_minutes \|\| 0`) | Number >= 0 | `INT NOT NULL DEFAULT 0` | Compatible |
+
+### 3. Failure Safety & Rollback Implementation
+- In `core-service/src/modules/orders/order.controller.js`:
+  - When `new_status === 'delivered'`, pay calculation is executed before committing status.
+  - If `calculatePay(order, rider)` throws (e.g. pay-service unavailable, returns 500, or network drops), the catch block preserves the order at its prior state:
+    - Retains previous status (`order.status = previousStatus`, e.g. `picked_up`).
+    - Resets `order.delivered_at = null`.
+    - Does NOT commit delivery to database.
+    - Does NOT trigger out-of-zone zone relocation or unallocated queue evaluation.
+    - Returns HTTP 502 with clear error: `Pay calculation failed: <message>. Order status remains ${previousStatus}. Please retry delivery.`
+  - When retry request arrives later, `delivered_at` is recalculated, `calculatePay` succeeds, status transitions to `delivered`, and subsequent duplicate requests return HTTP 200 idempotent per F2.
+
+### 4. Verification Evidence
+- `pay-service npm test`: 33/33 tests passed (validates canonical delay types/sources, rejects unknown source with 400, validates MySQL persistence for all delay reasons without data truncation).
+- `core-service npm test`: 76/76 tests passed (validates 400 on unknown delay source, validates report delay for each reason -> deliver -> pay computed with delay reason preserved, validates simulated pay failure keeping order at picked_up with 502 and subsequent retry succeeding with 200).
+- `fairdrop_app flutter test test/f16_floor_redesign_test.dart`: 3/3 passed.
+
+
 

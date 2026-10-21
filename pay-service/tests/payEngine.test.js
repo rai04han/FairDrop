@@ -88,6 +88,57 @@ describe('Pure Pay Engine Unit Tests (payEngine.js)', () => {
     );
   });
 
+  test('validateRequest accepts all canonical delay types and sources (AUDIT-F22)', () => {
+    const validTypes = ['traffic', 'restaurant', 'railway', 'weather', 'none'];
+    const validSources = ['rider_report', 'system_log', 'api_mock', 'none'];
+
+    for (const t of validTypes) {
+      for (const s of validSources) {
+        assert.doesNotThrow(() =>
+          validateRequest({
+            rider_id: 'r1',
+            order_id: 'ORD-20261019-0001',
+            distance_km: 1,
+            is_surge_active: false,
+            restaurant_wait_mins: 0,
+            active_hours_today: 1,
+            delay_context: { type: t, verified: false, source: s },
+          })
+        );
+      }
+    }
+  });
+
+  test('validateRequest rejects unknown delay type or unknown source with descriptive error (AUDIT-F22)', () => {
+    assert.throws(
+      () =>
+        validateRequest({
+          rider_id: 'r1',
+          order_id: 'ORD-20261019-0001',
+          distance_km: 1,
+          is_surge_active: false,
+          restaurant_wait_mins: 0,
+          active_hours_today: 1,
+          delay_context: { type: 'alien_traffic', verified: false, source: 'none' },
+        }),
+      /Invalid delay_context\.type/
+    );
+
+    assert.throws(
+      () =>
+        validateRequest({
+          rider_id: 'r1',
+          order_id: 'ORD-20261019-0001',
+          distance_km: 1,
+          is_surge_active: false,
+          restaurant_wait_mins: 0,
+          active_hours_today: 1,
+          delay_context: { type: 'traffic', verified: false, source: 'satellite_ping' },
+        }),
+      /Invalid delay_context\.source/
+    );
+  });
+
   test('calculatePay computes linear base + distance pay without surge/wait', () => {
     const request = {
       rider_id: 'r1',
@@ -312,6 +363,57 @@ describe('POST /api/pay/calculate Idempotency & Rider Upsert (FR-74)', () => {
       [testOrderId]
     );
     assert.strictEqual(deliveries.length, 1);
+  });
+
+  test('POST /api/pay/calculate rejects unknown delay source with 400 (AUDIT-F22)', async () => {
+    const res = await fetch(`${baseUrl}/api/pay/calculate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        ...payload,
+        order_id: 'ORD-20261019-9102',
+        delay_context: { type: 'traffic', verified: false, source: 'unknown_source' },
+      }),
+    });
+    assert.strictEqual(res.status, 400);
+    const data = await res.json();
+    assert.strictEqual(data.error, 'Validation failed');
+    assert.match(data.message, /Invalid delay_context\.source/);
+  });
+
+  test('POST /api/pay/calculate accepts each canonical delay type with rider_report without truncation (AUDIT-F22)', async () => {
+    const reasons = ['traffic', 'restaurant', 'railway', 'weather'];
+    for (let i = 0; i < reasons.length; i++) {
+      const reason = reasons[i];
+      const ordId = `ORD-20261019-911${i}`;
+      const res = await fetch(`${baseUrl}/api/pay/calculate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          ...payload,
+          order_id: ordId,
+          delay_context: { type: reason, verified: false, source: 'rider_report' },
+        }),
+      });
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.order_id, ordId);
+
+      // Verify row persisted in MySQL deliveries table without truncation error
+      const [rows] = await pool.execute(
+        'SELECT delay_type, delay_source FROM deliveries WHERE order_id = ?',
+        [ordId]
+      );
+      assert.strictEqual(rows.length, 1);
+      assert.strictEqual(rows[0].delay_type, reason);
+      assert.strictEqual(rows[0].delay_source, 'rider_report');
+    }
   });
 });
 

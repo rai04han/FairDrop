@@ -35,21 +35,26 @@ const statusHistorySchema = new mongoose.Schema(
   { _id: false }
 );
 
+// ── Canonical delay constants (AUDIT-F22) ──────────────────────────────────
+const VALID_DELAY_TYPES = ['traffic', 'restaurant', 'railway', 'weather', 'none'];
+const VALID_DELAY_SOURCES = ['rider_report', 'system_log', 'api_mock', 'none'];
+
 // ── Delay context (sent to Pay Engine) ─────────────────────────────────────
 
 const delayContextSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['traffic', 'restaurant', 'railway', 'none'],
+      enum: VALID_DELAY_TYPES,
       default: 'none',
     },
     verified: { type: Boolean, default: false },
     source: {
       type: String,
-      enum: ['system_log', 'api_mock', 'none'],
+      enum: VALID_DELAY_SOURCES,
       default: 'none',
     },
+    notes: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -209,9 +214,11 @@ orderSchema.index({ customer_id: 1, created_at: -1 });
 orderSchema.index({ rider_id: 1, status: 1 });
 orderSchema.index({ status: 1 });
 
-// ── Export valid transitions so controller can use them ─────────────────────
+// ── Export valid transitions and canonical delay constants ─────────────────
 
 orderSchema.statics.VALID_TRANSITIONS = VALID_TRANSITIONS;
+orderSchema.statics.VALID_DELAY_TYPES = VALID_DELAY_TYPES;
+orderSchema.statics.VALID_DELAY_SOURCES = VALID_DELAY_SOURCES;
 
 const Order = mongoose.model('Order', orderSchema);
 

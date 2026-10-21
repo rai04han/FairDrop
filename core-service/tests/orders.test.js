@@ -13,6 +13,7 @@
 //   - Accept & decline actions without penalty (FR-15, D7)
 //   - Full status lifecycle transitions & pay trigger
 
+const http = require('http');
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
@@ -25,6 +26,9 @@ const Order = require('../src/modules/orders/Order.model');
 
 let server;
 let baseUrl;
+let mockPayServer;
+let mockPayFail = false;
+let originalPayUrl;
 
 // Tokens and entities
 let customerToken;
@@ -49,6 +53,44 @@ before(async () => {
   server = app.listen(0);
   const port = server.address().port;
   baseUrl = `http://localhost:${port}`;
+
+  originalPayUrl = env.PAY_SERVICE_URL;
+  mockPayServer = http.createServer((req, res) => {
+    if (req.url === '/api/pay/calculate' && req.method === 'POST') {
+      if (mockPayFail) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Pay engine failure simulation' }));
+        return;
+      }
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        const parsed = JSON.parse(body || '{}');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          order_id: parsed.order_id,
+          base_rate: 15.00,
+          distance_pay: 18.00,
+          surge_bonus: 0.00,
+          wait_compensation: 0.00,
+          total_delivery_pay: 33.00,
+          floor_topup: 0.00,
+          hourly_earnings_so_far: 33.00,
+          delay_context: parsed.delay_context,
+        }));
+      });
+    } else if (req.url === '/api/pay/riders' && req.method === 'POST') {
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Rider created/updated in MySQL' }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+
+  await new Promise(resolve => mockPayServer.listen(0, resolve));
+  const payPort = mockPayServer.address().port;
+  env.PAY_SERVICE_URL = `http://localhost:${payPort}`;
 
   // ── Seed Zones ─────────────────────────────────────────────────────
   chinnakkadaZone = await Zone.create({
@@ -169,6 +211,10 @@ after(async () => {
   await mongoose.connection.db.dropDatabase();
   await mongoose.disconnect();
   server.close();
+  if (mockPayServer) {
+    mockPayServer.close();
+  }
+  env.PAY_SERVICE_URL = originalPayUrl;
 });
 
 // Helper
@@ -539,5 +585,174 @@ describe('GET /api/orders/history & GET /api/orders/restaurants', () => {
     assert.equal(status, 200);
     assert.ok(data.restaurants.length >= 1);
     assert.equal(data.restaurants[0].name, 'Hotel Arun');
+  });
+});
+
+describe('Delay Flow & Delivery Failure Safety (AUDIT-F22)', () => {
+  test('rejects unknown delay source or type with 400', async () => {
+    await Order.deleteMany({ status: { $ne: 'delivered' } });
+    await User.findByIdAndUpdate(riderUser._id, {
+      'rider_profile.is_online': true,
+      'rider_profile.is_available': true,
+    });
+    await User.findByIdAndUpdate(secondRiderUser._id, {
+      'rider_profile.is_online': false,
+      'rider_profile.is_available': false,
+    });
+
+    // Place an active order
+    const { data: oData } = await req('POST', '/api/orders', {
+      restaurant_id: restaurantId,
+      items: [{ item_id: dosaItem._id, quantity: 1 }],
+      delivery_address: { label: 'Pin A', latitude: 8.8860, longitude: 76.5920 },
+      restaurant_address: { label: 'Hotel Arun', latitude: 8.8855, longitude: 76.5950 },
+    }, customerToken);
+    const ordId = oData.order.order_id;
+    const acceptRes = await req('PATCH', `/api/orders/${ordId}/accept`, {}, riderToken);
+    assert.equal(acceptRes.status, 200);
+
+    // 1. Unknown source on status update -> 400
+    const res1 = await req('PATCH', `/api/orders/${ordId}/status`, {
+      new_status: 'arrived',
+      delay_context: { type: 'traffic', verified: false, source: 'satellite_beacon' },
+    }, riderToken);
+    assert.equal(res1.status, 400);
+    assert.match(res1.data.message, /Invalid delay_context\.source/);
+
+    // 2. Unknown type on status update -> 400
+    const res2 = await req('PATCH', `/api/orders/${ordId}/status`, {
+      new_status: 'arrived',
+      delay_context: { type: 'tornado_watch', verified: false, source: 'rider_report' },
+    }, riderToken);
+    assert.equal(res2.status, 400);
+    assert.match(res2.data.message, /Invalid delay_context\.type/);
+
+    // 3. Unknown source on create order -> 400
+    const res3 = await req('POST', '/api/orders', {
+      restaurant_id: restaurantId,
+      items: [{ item_id: dosaItem._id, quantity: 1 }],
+      delivery_address: { label: 'Pin A', latitude: 8.8860, longitude: 76.5920 },
+      restaurant_address: { label: 'Hotel Arun', latitude: 8.8855, longitude: 76.5950 },
+      delay_context: { type: 'traffic', verified: false, source: 'invalid_src' },
+    }, customerToken);
+    assert.equal(res3.status, 400);
+    assert.match(res3.data.message, /Invalid delay_context\.source/);
+  });
+
+  test('report delay with each reason -> deliver -> payout computed with delay reason preserved', async () => {
+    const reasons = ['traffic', 'restaurant', 'railway', 'weather'];
+    for (const reason of reasons) {
+      await Order.deleteMany({ status: { $ne: 'delivered' } });
+      await User.findByIdAndUpdate(riderUser._id, {
+        'rider_profile.is_online': true,
+        'rider_profile.is_available': true,
+      });
+      await User.findByIdAndUpdate(secondRiderUser._id, {
+        'rider_profile.is_online': false,
+        'rider_profile.is_available': false,
+      });
+
+      // Place new order
+      const { data: oData } = await req('POST', '/api/orders', {
+        restaurant_id: restaurantId,
+        items: [{ item_id: dosaItem._id, quantity: 1 }],
+        delivery_address: { label: 'Pin A', latitude: 8.8860, longitude: 76.5920 },
+        restaurant_address: { label: 'Hotel Arun', latitude: 8.8855, longitude: 76.5950 },
+      }, customerToken);
+      const testOrdId = oData.order.order_id;
+
+      // Accept -> Arrived -> Picked Up with delay reported
+      const acc = await req('PATCH', `/api/orders/${testOrdId}/accept`, {}, riderToken);
+      assert.equal(acc.status, 200);
+      const arr = await req('PATCH', `/api/orders/${testOrdId}/status`, { new_status: 'arrived' }, riderToken);
+      assert.equal(arr.status, 200);
+      const pickRes = await req('PATCH', `/api/orders/${testOrdId}/status`, {
+        new_status: 'picked_up',
+        delay_context: { type: reason, verified: false, source: 'rider_report', notes: `Delay: ${reason}` },
+      }, riderToken);
+      assert.equal(pickRes.status, 200);
+
+      // Deliver
+      const delRes = await req('PATCH', `/api/orders/${testOrdId}/status`, {
+        new_status: 'delivered',
+      }, riderToken);
+
+      assert.equal(delRes.status, 200);
+      assert.equal(delRes.data.order.status, 'delivered');
+      assert.equal(delRes.data.order.pay_status, 'calculated');
+      assert.equal(delRes.data.order.delay_context.type, reason);
+      assert.equal(delRes.data.order.delay_context.source, 'rider_report');
+      assert.notEqual(delRes.data.order.delay_context.type, 'none');
+
+      // Verify in MongoDB
+      const dbOrder = await Order.findOne({ order_id: testOrdId });
+      assert.equal(dbOrder.delay_context.type, reason);
+      assert.equal(dbOrder.delay_context.source, 'rider_report');
+      assert.equal(dbOrder.status, 'delivered');
+      assert.equal(dbOrder.pay_status, 'calculated');
+    }
+  });
+
+  test('simulated pay failure keeps order unchanged at picked_up and retry succeeds', async () => {
+    await Order.deleteMany({ status: { $ne: 'delivered' } });
+    await User.findByIdAndUpdate(riderUser._id, {
+      'rider_profile.is_online': true,
+      'rider_profile.is_available': true,
+    });
+    await User.findByIdAndUpdate(secondRiderUser._id, {
+      'rider_profile.is_online': false,
+      'rider_profile.is_available': false,
+    });
+
+    // Place new order
+    const { data: oData } = await req('POST', '/api/orders', {
+      restaurant_id: restaurantId,
+      items: [{ item_id: dosaItem._id, quantity: 1 }],
+      delivery_address: { label: 'Pin A', latitude: 8.8860, longitude: 76.5920 },
+      restaurant_address: { label: 'Hotel Arun', latitude: 8.8855, longitude: 76.5950 },
+    }, customerToken);
+    const failOrdId = oData.order.order_id;
+
+    const acc = await req('PATCH', `/api/orders/${failOrdId}/accept`, {}, riderToken);
+    assert.equal(acc.status, 200);
+    const arr = await req('PATCH', `/api/orders/${failOrdId}/status`, { new_status: 'arrived' }, riderToken);
+    assert.equal(arr.status, 200);
+    const pck = await req('PATCH', `/api/orders/${failOrdId}/status`, { new_status: 'picked_up' }, riderToken);
+    assert.equal(pck.status, 200);
+
+    // Verify order is picked_up
+    const beforeFailOrder = await Order.findOne({ order_id: failOrdId });
+    assert.equal(beforeFailOrder.status, 'picked_up');
+
+    // Simulate Pay Engine failure
+    mockPayFail = true;
+    const failRes = await req('PATCH', `/api/orders/${failOrdId}/status`, {
+      new_status: 'delivered',
+    }, riderToken);
+
+    assert.equal(failRes.status, 502);
+    assert.match(failRes.data.message, /Pay calculation failed/);
+    assert.match(failRes.data.message, /remains "picked_up"/);
+
+    // Verify order in MongoDB is UNCHANGED (still picked_up, delivered_at undefined, pay_status pending)
+    const orderAfterFail = await Order.findOne({ order_id: failOrdId });
+    assert.equal(orderAfterFail.status, 'picked_up');
+    assert.ok(!orderAfterFail.delivered_at);
+    assert.equal(orderAfterFail.pay_status, 'none');
+
+    // Restore Pay Engine and Retry delivered
+    mockPayFail = false;
+    const retryRes = await req('PATCH', `/api/orders/${failOrdId}/status`, {
+      new_status: 'delivered',
+    }, riderToken);
+
+    assert.equal(retryRes.status, 200);
+    assert.equal(retryRes.data.order.status, 'delivered');
+    assert.equal(retryRes.data.order.pay_status, 'calculated');
+
+    // Verify order in MongoDB is now delivered
+    const orderAfterRetry = await Order.findOne({ order_id: failOrdId });
+    assert.equal(orderAfterRetry.status, 'delivered');
+    assert.ok(orderAfterRetry.delivered_at);
   });
 });
