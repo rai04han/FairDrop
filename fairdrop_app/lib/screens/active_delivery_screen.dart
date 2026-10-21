@@ -421,8 +421,11 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                   IconButton(
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(Icons.arrow_back_rounded, color: FairDropColors.brandNavy),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                  const FairDropLogo(fontSize: 22),
+                  const SizedBox(width: 8),
+                  const FairDropLogo(fontSize: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(

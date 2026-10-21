@@ -34,6 +34,15 @@ void main() {
       expect(find.byKey(const Key('zone_card_KLM-PLY')), findsOneWidget);
       expect(find.byKey(const Key('zone_card_KLM-KLK')), findsOneWidget);
 
+      // Verify all 3 polygon centroid labels are rendered (F19)
+      expect(find.byKey(const Key('polygon_marker_KLM-CHK')), findsOneWidget);
+      expect(find.byKey(const Key('polygon_marker_KLM-PLY')), findsOneWidget);
+      expect(find.byKey(const Key('polygon_marker_KLM-KLK')), findsOneWidget);
+
+      // Verify Pilot hub zones legend is rendered (F19)
+      expect(find.byKey(const Key('pilot_hub_zones_legend')), findsOneWidget);
+      expect(find.text('Pilot hub zones'), findsOneWidget);
+
       // Active badge on home zone
       expect(find.text('ACTIVE HUB'), findsOneWidget);
 

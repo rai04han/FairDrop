@@ -446,5 +446,38 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `fairdrop_app flutter test test/profile_screen_test.dart`: 4/4 passed.
 - `fairdrop_app flutter analyze`: No issues found!
 
+---
+
+## F19: Layout Overflows & Zone Map Usability (AUDIT-F19 / R15, R16)
+
+### 1. Root Causes & Findings
+- **Active Delivery Title Overflow (R15)**: On `ActiveDeliveryScreen`, the title row contained an `IconButton` with default 48px constraints, `FairDropLogo(fontSize: 22)`, unconstrained `Text('Active Delivery')`, and `KL-02` badge. On 393px width screens, this exceeded viewport width, causing a 28px RenderFlex overflow.
+- **Zone Map Bottom Cards Clipping & Header Overflow (R16)**:
+  - In `ZoneMapScreen`, the bottom cards horizontal `ListView.builder` used default `Clip.hardEdge` without horizontal padding, clipping the leftmost card border and shadow.
+  - The bottom sheet header `Row` contained an unconstrained title `Row` and a statutory floor badge `Container`, causing a 244px RenderFlex overflow on narrow screens.
+- **Zone Polygons Missing Centroid Badges (R16)**: The 3 pilot hub zones (`KLM-CHK`, `KLM-PLY`, `KLM-KLK`) were rendered on the map only as canvas-filled polygon outlines without clear badge labels at their centroids.
+- **Missing Hub Legend (R16)**: The map lacked a floating legend identifying the pilot hub zones and their respective codes.
+
+### 2. Remediation Applied
+- **`fairdrop_app/lib/screens/active_delivery_screen.dart`**:
+  - Set `padding: EdgeInsets.zero` and `constraints: const BoxConstraints()` on the back `IconButton`.
+  - Adjusted logo to `fontSize: 20` and wrapped title in `Expanded(child: Text('Active Delivery', overflow: TextOverflow.ellipsis))`, completely resolving the 28px overflow.
+- **`fairdrop_app/lib/screens/zone_map_screen.dart`**:
+  - Top Bar: Constrained `IconButton` (`padding: EdgeInsets.zero`, `constraints: const BoxConstraints()`), wrapped `Text('Kollam Zones')` in `Expanded` with ellipsis, eliminating top-bar overflow.
+  - Polygon Centroid Labels: Added a `MarkerLayer` placing badge labels with status dots at the exact centroids (`KLM-CHK`: `8.8875, 76.5900`, `KLM-PLY`: `8.8775, 76.6100`, `KLM-KLK`: `8.9000, 76.6225`). Scaled text with `FittedBox` inside `width: 120, height: 36` markers to guarantee 0 overflow exceptions.
+  - Pilot Hub Zones Legend: Added a top-right floating legend card (`Key('pilot_hub_zones_legend')`) titled `"Pilot hub zones"` showing all 3 pilot hubs with color swatches and codes. Zone coordinates remained 100% untouched.
+  - Bottom Sheet & Card Clipping: Added `clipBehavior: Clip.none`, `padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2)`, and `height: 108` to the horizontal `ListView.builder`. Wrapped the sheet header title in `Expanded` with ellipsis, eliminating the 244px overflow.
+
+### 3. Verification & Test Evidence
+- **`fairdrop_app/test/f19_layout_test.dart`**:
+  - Test 1 (393px): Verifies `ActiveDeliveryScreen` title row at 393px width with 0 layout exceptions (`tester.takeException() == null`).
+  - Test 2 (393px): Verifies `ZoneMapScreen` renders all 3 polygon centroid markers (`polygon_marker_KLM-CHK`, `polygon_marker_KLM-PLY`, `polygon_marker_KLM-KLK`), floating legend `"Pilot hub zones"`, and bottom sheet cards at 393px width with 0 layout exceptions.
+  - Test 3 (393px): Verifies `ZoneMapScreen` out-of-zone transition banner at 393px width with 0 layout exceptions.
+- **`fairdrop_app/test/zone_map_test.dart`**: All 5 tests passing (asserting all 3 polygon labels and pilot hub legend).
+- **`fairdrop_app/test/active_delivery_test.dart`**: All 5 tests passing.
+- `fairdrop_app flutter analyze`: No issues found!
+- `fairdrop_app flutter test`: 134/134 tests passed!
+
+
 
 

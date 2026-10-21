@@ -223,13 +223,16 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
 
   LatLng _calculateCentroid(List<LatLng> points) {
     if (points.isEmpty) return _kollamCenter;
+    final uniquePoints = (points.length > 1 && points.first == points.last)
+        ? points.sublist(0, points.length - 1)
+        : points;
     double sumLat = 0.0;
     double sumLng = 0.0;
-    for (final p in points) {
+    for (final p in uniquePoints) {
       sumLat += p.latitude;
       sumLng += p.longitude;
     }
-    return LatLng(sumLat / points.length, sumLng / points.length);
+    return LatLng(sumLat / uniquePoints.length, sumLng / uniquePoints.length);
   }
 
   void _focusZone(String zoneId, List<LatLng> points) {
@@ -240,6 +243,32 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
       final centroid = _calculateCentroid(points);
       _mapController.move(centroid, 14.2);
     }
+  }
+
+  Widget _buildLegendItem(String code, String name, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.35),
+            border: Border.all(color: color, width: 1.5),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '$code ($name)',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: FairDropColors.brandNavy,
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -259,18 +288,24 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
                     key: const Key('zone_map_back_button'),
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(Icons.arrow_back_rounded, color: FairDropColors.brandNavy),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                  const FairDropLogo(fontSize: 22),
                   const SizedBox(width: 8),
-                  Text(
-                    'Kollam Zones',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: FairDropColors.brandNavy,
+                  const FairDropLogo(fontSize: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Kollam Zones',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: FairDropColors.brandNavy,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   Container(
                     key: const Key('active_zone_pill'),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -446,6 +481,79 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
                               }).whereType<Polygon>().toList(),
                             ),
 
+                            // Zone Centroid Badge Labels for all 3 polygons (FR-26, F19)
+                            MarkerLayer(
+                              markers: _zones.map((zone) {
+                                final props = zone['properties'] as Map<String, dynamic>? ?? {};
+                                final zoneId = (props['zone_id'] ?? props['code'] ?? zone['zone_id'] ?? '').toString();
+                                final points = parseGeoJsonPolygon(zone['geometry'] ?? zone['boundary']);
+
+                                LatLng centroid;
+                                if (zoneId == 'KLM-CHK') {
+                                  centroid = const LatLng(8.8875, 76.5900);
+                                } else if (zoneId == 'KLM-PLY') {
+                                  centroid = const LatLng(8.8775, 76.6100);
+                                } else if (zoneId == 'KLM-KLK') {
+                                  centroid = const LatLng(8.9000, 76.6225);
+                                } else {
+                                  centroid = _calculateCentroid(points);
+                                }
+
+                                final isActiveZone = _activeZoneCode != null &&
+                                    zoneId.toUpperCase() == _activeZoneCode!.toUpperCase();
+                                final Color color = isActiveZone
+                                    ? FairDropColors.brandGreen
+                                    : (zoneId == 'KLM-PLY'
+                                        ? FairDropColors.brandOrange
+                                        : FairDropColors.brandNavy);
+
+                                return Marker(
+                                  point: centroid,
+                                  width: 120,
+                                  height: 36,
+                                  child: Center(
+                                    child: Container(
+                                      key: Key('polygon_marker_$zoneId'),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: color, width: isActiveZone ? 2.0 : 1.2),
+                                        boxShadow: FairDropColors.cardShadow,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 6,
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: color,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 5),
+                                          Flexible(
+                                            child: FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              child: Text(
+                                                zoneId,
+                                                style: GoogleFonts.plusJakartaSans(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: FairDropColors.brandNavy,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+
                             // Last Delivery Endpoint Marker (FR-29)
                             if (_lastDeliveryPoint != null)
                               MarkerLayer(
@@ -486,6 +594,42 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
                           ],
                         ),
 
+                        // Top-right Floating Legend Card (F19)
+                        Positioned(
+                          top: 12,
+                          right: 16,
+                          child: Container(
+                            key: const Key('pilot_hub_zones_legend'),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.95),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: FairDropColors.mintBorder),
+                              boxShadow: FairDropColors.cardShadow,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Pilot hub zones',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: FairDropColors.brandNavy,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                _buildLegendItem('KLM-CHK', 'Chinnakkada', FairDropColors.brandGreen),
+                                const SizedBox(height: 4),
+                                _buildLegendItem('KLM-PLY', 'Polayathode', FairDropColors.brandOrange),
+                                const SizedBox(height: 4),
+                                _buildLegendItem('KLM-KLK', 'Kilikolloor', FairDropColors.brandNavy),
+                              ],
+                            ),
+                          ),
+                        ),
+
                         // Bottom Floating Active Zones Sheet
                         Positioned(
                           left: 16,
@@ -506,24 +650,30 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.explore_rounded,
-                                          color: FairDropColors.brandGreen,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '${_zones.length} Active Kollam Zones',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w800,
-                                            color: FairDropColors.brandNavy,
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.explore_rounded,
+                                            color: FairDropColors.brandGreen,
+                                            size: 20,
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              '${_zones.length} Active Kollam Zones',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w800,
+                                                color: FairDropColors.brandNavy,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
+                                    const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                       decoration: BoxDecoration(
@@ -545,9 +695,11 @@ class _ZoneMapScreenState extends State<ZoneMapScreen> {
                                 const SizedBox(height: 12),
 
                                 SizedBox(
-                                  height: 104,
+                                  height: 108,
                                   child: ListView.builder(
                                     scrollDirection: Axis.horizontal,
+                                    clipBehavior: Clip.none,
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                                     itemCount: _zones.length,
                                     itemBuilder: (ctx, i) {
                                       final z = _zones[i];
