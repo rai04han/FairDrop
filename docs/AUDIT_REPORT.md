@@ -314,7 +314,7 @@
     - `.env` files are gitignored in both services.
     - `.env.example` files are present in both services.
     - No Atlas URI in tracked files; `git log -p -S "mongodb+srv"` contains only open-source driver package commits.
-    - **Defect:** `docs/Application_Guide.md` line 12 contains tracked plaintext database password: `DB_PASSWORD=root123`.
+    - **Defect:** `docs/Application_Guide.md` line 12 contains tracked plaintext database password: `DB_PASSWORD=<DB_PASSWORD>`.
 
 15. **HTTP Timeouts, Error States, and Spinners:** **FAIL (Swallowed Errors)**  
     - Both `ApiService` and `CoreApiService` wrap all calls with 10-second timeouts (`_withTimeout`).
@@ -437,7 +437,7 @@ The following line-by-line discrepancies were identified between `docs/DEMO_RUNB
 - **Risk:** Low.
 
 #### Should Fix 4: Plaintext Password Committed in Documentation
-- **File:** `docs/Application_Guide.md` (line with `DB_PASSWORD=root123`).
+- **File:** `docs/Application_Guide.md` (line with `DB_PASSWORD=<DB_PASSWORD>`).
 - **Root Cause:** Plaintext MySQL password committed in git-tracked document.
 - **Minimal Fix:** Replace password with `DB_PASSWORD=your_password_here`.
 - **Risk:** Zero risk.

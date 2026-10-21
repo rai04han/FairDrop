@@ -26,3 +26,7 @@ fairdrop_app/.flutter-plugins-dependencies
 
 # Repomix & bundle dumps
 repomix-output.xml
+
+# Android binaries
+*.apk
+*.aab

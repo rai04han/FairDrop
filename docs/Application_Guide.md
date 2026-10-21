@@ -133,7 +133,7 @@ PORT=3001
 ```
 PORT=3003
 MONGODB_URI=mongodb://...  (Atlas connection string — already configured)
-JWT_SECRET=fairdrop-dev-secret-do-not-use-in-production
+JWT_SECRET=<JWT_SECRET>
 JWT_EXPIRES_IN=24h
 PAY_SERVICE_URL=http://localhost:3001
 ```
