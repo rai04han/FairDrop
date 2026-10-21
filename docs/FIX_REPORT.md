@@ -1,9 +1,9 @@
 # FairDrop Defects Fix Report (Complete: Part 1 & Part 2)
 
-**Date:** October 20, 2026  
+**Date:** October 21, 2026  
 **Audited Against:** `docs/FairDrop_Flutter_App_PRD_v2.1.md` and `docs/AUDIT_REPORT.md`  
 **Base Tag:** `pre-audit` (`06711b4`)  
-**Head Commit:** `064b38f` (before report update)  
+**Head Commit:** `b12ae8a` (before final report commit)  
 
 ---
 
@@ -25,6 +25,15 @@
 | **F12** | Remove hardcoded Today's Shift card (₹685, 4.3h, ₹420, ₹95, ₹120, +₹50) and fake incoming offer card (countdown, Instant Match); display real backend stats and config rates with clean zeros for new rider; render offer card only when active pending offer exists (R1/R2) | **FIXED** | `3595881` | `fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/test/order_models_parsing_test.dart` | `flutter analyze`: No issues found;<br>`flutter test test/order_models_parsing_test.dart`: 10/10 passed;<br>Zero fabricated values; clean zeros for new rider; zero layout overflows on 360px & 393px viewports |
 | **F13** | Replace cliff-bonus quota model and >80% failure claims with balanced illustrative Zomato ladder comparison, linear incentive formula `rate × n + peak_bonus`, interactive peak toggle, 0-30 orders cumulative chart, parity table, and break-even notes (R6) | **FIXED** | `591a61b` | `fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/lib/utils/incentive_analytics.dart` (pre-declared constants helper)<br>`fairdrop_app/test/analytics_dashboard_test.dart` | `flutter analyze`: No issues found;<br>`flutter test test/analytics_dashboard_test.dart`: 10/10 passed;<br>Scope notice banner, peak toggle, parity table, and policy notes verified; `payEngine.js` formulas and backend contracts untouched |
 | **F14** | Remove rogue call to admin-only `GET /api/admin/pay-config/history` from non-admin `profile_screen.dart`; retain authorized admin access in `AdminPanelScreen` (R8) | **FIXED** | `6c99184`<br>`311470a` | `fairdrop_app/lib/screens/profile_screen.dart`<br>`fairdrop_app/test/profile_screen_test.dart` (pre-declared) | Non-admin riders receive 0 HTTP 403 Forbidden errors;<br>`flutter test test/layout_responsive_test.dart test/admin_panel_test.dart test/profile_screen_test.dart`: all 16 tests passed |
+| **F15** | Bind all payout figures to live pay-service ledger and config; flat wait bonus; zero hardcoded pay rates; reordered visual sum on delivery completed (R9, R12, R13, R14) | **FIXED** | `216d3eb` | `core-service/src/modules/riders/rider.controller.js`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/test/f15_payout_sources_test.dart` | `core-service npm test`: passed;<br>`flutter test test/f15_payout_sources_test.dart`: 4/4 passed;<br>Zero fabricated numbers; verified/cached badges; 0 layout overflows at 393px |
+| **F16** | Evaluate statutory wage floor on completed 60-minute engaged blocks without strong-hour offsets; separate floor top-up from per-delivery ledger into daily summary (R10, R11) | **FIXED** | `1c9652b`<br>`c0627ca` | `pay-service/src/services/payEngine.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart` | `pay-service npm test`: 33/33 passed;<br>Unit tests assert 59m engaged -> ₹0, 60m engaged -> top-up to ₹70/hr, no offset between strong/weak hours |
+| **F17** | Add Kollam Hub Fairness Index subtitle; realized pay displays "Not enough completed hours today" when engaged time is 0; remove "+₹12" and road conditions; dynamic formula modal (R17, R18) | **FIXED** | `3b09530` | `fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/test/f17_hub_fairness_test.dart` | `flutter analyze`: No issues found;<br>`flutter test test/f17_hub_fairness_test.dart`: 2/2 passed at 393px width with 0 layout exceptions |
+| **F18** | Bind profile deliveries and avg earnings to `getTodayStats()`; floor top-up indicator; remove unverified "Verified Partner", vehicle, and insurance labels; cite Fairwork Principle 3 (R19) | **FIXED** | `552a675` | `fairdrop_app/lib/screens/profile_screen.dart`<br>`fairdrop_app/test/profile_screen_test.dart` | `flutter analyze`: No issues found;<br>`flutter test test/profile_screen_test.dart`: 4/4 passed;<br>88px overflow eliminated at 393px width with Expanded + FittedBox |
+| **F19** | Fix ActiveDelivery title overflow (28px); fix ZoneMap bottom cards clipping and sheet header overflow (244px); add polygon centroid markers and "Pilot hub zones" legend (R15, R16) | **FIXED** | `39cff8a` | `fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/zone_map_screen.dart`<br>`fairdrop_app/test/f19_layout_test.dart` | `flutter analyze`: No issues found;<br>`flutter test test/f19_layout_test.dart`: 3/3 passed at 393px width with 0 layout exceptions;<br>All 3 polygon centroids and legend card verified |
+| **F20** | Full audit and literal sweep across `fairdrop_app/lib/` (112 occurrences classified); replace active delivery wait comp subtitle with dynamic flat bonus config binding | **FIXED** | `6c120f4` | `fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: No issues found;<br>`flutter test test/active_delivery_test.dart test/analytics_dashboard_test.dart test/f19_layout_test.dart`: 18/18 passed;<br>Full 112-item audit table embedded |
+| **F21** | Analytics wording follow-up: explicit cost-neutrality at top Zomato tier (27 orders) and platform extra cost capped at 27 orders; parity summary & policy notes updated; 393px layout fix (R6) | **FIXED** | `b12ae8a` | `fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: No issues found;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Dedicated 393px mobile width test passing with 0 layout exceptions |
+| **F22** | Canonical delay flow enums (`traffic`, `weather`, `restaurant`, `customer`, `other`; `rider_report`, `ops_dispatch`, `system_detection`) and delivery failure rollback to `picked_up` (FR-19, FR-20, FR-24) | **FIXED** | `c645d26` | `core-service/src/modules/orders/order.controller.js`<br>`core-service/src/modules/orders/order.model.js`<br>`core-service/tests/orders.test.js`<br>`pay-service/src/services/payEngine.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart` | `core-service npm test`: passed;<br>`pay-service npm test`: passed;<br>Simulated pay failure maintains order at picked_up; retry succeeds |
+| **F23** | Support string menu item IDs (`item-101`, `item-102`, `item-103`) in core-service schemas, seed, and availability toggles (FR-63, FR-64) | **FIXED** | `8a67564` | `core-service/src/modules/restaurants/restaurant.model.js`<br>`core-service/src/modules/restaurants/restaurant.controller.js`<br>`core-service/tests/restaurants.test.js`<br>`scripts/seed.js` | `core-service npm test`: 78/78 passed;<br>Both seeded and newly created menu items toggle availability by string ID |
 
 ---
 
@@ -186,12 +195,12 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 
 | Check | Result | Exact Summary Line |
 | --- | --- | --- |
-| `core-service: npm test` | **PASS** | `ℹ tests 73 | ℹ suites 21 | ℹ pass 73 | ℹ fail 0 | ℹ duration_ms 57959.6732` |
-| `pay-service: npm test` | **PASS** | `ℹ tests 24 | ℹ suites 8 | ℹ pass 24 | ℹ fail 0 | ℹ duration_ms 25014.7686` |
-| `Master Seed & Smoke Test` | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (10.34s)` |
-| `fairdrop_app: flutter analyze` | **PASS** | `No issues found! (ran in 42.1s)` |
-| `fairdrop_app: flutter test` | **PASS** | `01:01 +121: All tests passed!` |
-| `fairdrop_app: flutter build web` | **PASS** | `√ Built build\web` |
+| `core-service: npm test` | **PASS** | `ℹ tests 78 | ℹ suites 23 | ℹ pass 78 | ℹ fail 0 | ℹ duration_ms 55578.9631` |
+| `pay-service: npm test` | **PASS** | `ℹ tests 33 | ℹ suites 9 | ℹ pass 33 | ℹ fail 0 | ℹ duration_ms 13630.9524` |
+| `Master Seed & Smoke Test` | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (17.24s)` |
+| `fairdrop_app: flutter analyze` | **PASS** | `No issues found! (ran in 10.0s)` |
+| `fairdrop_app: flutter test` | **PASS** | `01:27 +135: All tests passed!` |
+| `fairdrop_app: flutter build web` | **PASS** | `√ Built build\web (ran in 292.1s)` |
 
 ---
 
@@ -664,3 +673,18 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
   - Added dedicated test `AnalyticsScreen renders at 393px mobile width with 0 layout exceptions (AUDIT-F21)` verifying that all parity cards, policy notes, and cost-neutrality statements render cleanly with `tester.takeException() == null`.
   - All 11 widget tests in `test/analytics_dashboard_test.dart` passing.
 - `fairdrop_app flutter analyze`: No issues found!
+
+---
+
+## 4. Final Verification Gate Summary (Part A + Part B)
+
+All six quality and operational gates have been executed and verified clean after completing all fixes (F1 through F23):
+
+| Gate | Target / Command | Result | Summary Line & Key Metrics |
+| --- | --- | --- | --- |
+| **Gate 1** | `core-service npm test` | **PASS** | `ℹ tests 78 | ℹ suites 23 | ℹ pass 78 | ℹ fail 0 | ℹ duration_ms 55578.9631` |
+| **Gate 2** | `pay-service npm test` | **PASS** | `ℹ tests 33 | ℹ suites 9 | ℹ pass 33 | ℹ fail 0 | ℹ duration_ms 13630.9524` |
+| **Gate 3** | `npm run seed ; npm run smoke` | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (17.24s)` |
+| **Gate 4** | `fairdrop_app flutter analyze` | **PASS** | `No issues found! (ran in 10.0s)` |
+| **Gate 5** | `fairdrop_app flutter test` | **PASS** | `01:27 +135: All tests passed!` (135/135 tests passing) |
+| **Gate 6** | `fairdrop_app flutter build web` | **PASS** | `√ Built build\web (ran in 292.1s)` |
