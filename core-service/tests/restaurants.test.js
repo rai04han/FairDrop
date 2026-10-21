@@ -65,6 +65,13 @@ before(async () => {
     role: 'customer',
   });
   customerToken = cust.token;
+
+  // Seed default menu items matching seed.js and app fallback IDs (AUDIT-F23)
+  await MenuItem.create([
+    { _id: 'item-101', restaurant_id: restaurantId, name: 'Parotta', price: 15, prep_time_seconds: 20, is_available: true },
+    { _id: 'item-102', restaurant_id: restaurantId, name: 'Fish Curry Meal', price: 120, prep_time_seconds: 45, is_available: true },
+    { _id: 'item-103', restaurant_id: restaurantId, name: 'Chicken Biryani', price: 180, prep_time_seconds: 40, is_available: true },
+  ]);
 });
 
 after(async () => {
@@ -191,5 +198,75 @@ describe('Restaurant Orders List with Derived is_ready (FR-65, FR-69)', () => {
     assert.equal(data.success, true);
     assert.ok(data.count >= 1);
     assert.equal(data.orders[0].is_ready, true);
+  });
+});
+
+describe('Menu Item String IDs & Toggle (AUDIT-F23)', () => {
+  test('updates and toggles a seeded item by its seeded string ID (item-102)', async () => {
+    // 1. Update seeded item
+    const updateRes = await req('PATCH', '/api/restaurants/menu/item-102', {
+      name: 'Fish Curry Meal Special',
+      price: 135,
+      prep_time_seconds: 50,
+    }, restaurantToken);
+
+    assert.equal(updateRes.status, 200);
+    assert.equal(updateRes.data.success, true);
+    assert.equal(updateRes.data.item.name, 'Fish Curry Meal Special');
+    assert.equal(updateRes.data.item.price, 135);
+    assert.equal(updateRes.data.item.prep_time_seconds, 50);
+
+    // 2. Toggle availability of seeded item
+    const toggleRes = await req('PATCH', '/api/restaurants/menu/item-102/availability', {
+      is_available: false,
+    }, restaurantToken);
+
+    assert.equal(toggleRes.status, 200);
+    assert.equal(toggleRes.data.item.is_available, false);
+
+    // 3. Verify in DB via findById with string ID
+    const dbItem = await MenuItem.findById('item-102');
+    assert.ok(dbItem);
+    assert.equal(dbItem._id, 'item-102');
+    assert.equal(dbItem.name, 'Fish Curry Meal Special');
+    assert.equal(dbItem.is_available, false);
+  });
+
+  test('updates and toggles a newly created item by its generated ID', async () => {
+    // 1. Create new item
+    const createRes = await req('POST', '/api/restaurants/menu', {
+      name: 'Ghee Roast Dosa',
+      price: 80,
+      prep_time_seconds: 25,
+      is_available: true,
+    }, restaurantToken);
+
+    assert.equal(createRes.status, 201);
+    const newItemId = createRes.data.item._id;
+    assert.ok(newItemId);
+
+    // 2. Update new item
+    const updateRes = await req('PATCH', `/api/restaurants/menu/${newItemId}`, {
+      name: 'Crispy Ghee Roast Dosa',
+      price: 85,
+    }, restaurantToken);
+
+    assert.equal(updateRes.status, 200);
+    assert.equal(updateRes.data.item.name, 'Crispy Ghee Roast Dosa');
+    assert.equal(updateRes.data.item.price, 85);
+
+    // 3. Toggle availability of new item
+    const toggleRes = await req('PATCH', `/api/restaurants/menu/${newItemId}/availability`, {
+      is_available: false,
+    }, restaurantToken);
+
+    assert.equal(toggleRes.status, 200);
+    assert.equal(toggleRes.data.item.is_available, false);
+
+    // 4. Verify in DB
+    const dbItem = await MenuItem.findById(newItemId);
+    assert.ok(dbItem);
+    assert.equal(dbItem.is_available, false);
+    assert.equal(dbItem.price, 85);
   });
 });

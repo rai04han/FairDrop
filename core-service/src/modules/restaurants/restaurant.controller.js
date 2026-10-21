@@ -195,6 +195,9 @@ async function updateMenuItem(req, res) {
       item,
     });
   } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ success: false, message: 'Menu item not found.' });
+    }
     console.error('updateMenuItem error:', error.message);
     res.status(500).json({ success: false, message: 'Server error updating menu item.' });
   }

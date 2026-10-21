@@ -365,14 +365,14 @@ async function seed() {
 
   // ── Step 7: Seed Restaurant Menus ──────────────────────────────────────────
   const arunMenuItems = [
-    { restaurant_id: arun._id, name: 'Chicken Biryani', price: 180, prep_time_seconds: 40, is_available: true },
-    { restaurant_id: arun._id, name: 'Parotta', price: 15, prep_time_seconds: 20, is_available: true },
-    { restaurant_id: arun._id, name: 'Fish Curry Meal', price: 120, prep_time_seconds: 45, is_available: true },
+    { _id: 'item-103', restaurant_id: arun._id, name: 'Chicken Biryani', price: 180, prep_time_seconds: 40, is_available: true },
+    { _id: 'item-101', restaurant_id: arun._id, name: 'Parotta', price: 15, prep_time_seconds: 20, is_available: true },
+    { _id: 'item-102', restaurant_id: arun._id, name: 'Fish Curry Meal', price: 120, prep_time_seconds: 45, is_available: true },
   ];
 
   const marinaMenuItems = [
-    { restaurant_id: marina._id, name: 'Veg Meals', price: 90, prep_time_seconds: 30, is_available: true },
-    { restaurant_id: marina._id, name: 'Masala Dosa', price: 60, prep_time_seconds: 25, is_available: true },
+    { _id: 'item-201', restaurant_id: marina._id, name: 'Veg Meals', price: 90, prep_time_seconds: 30, is_available: true },
+    { _id: 'item-202', restaurant_id: marina._id, name: 'Masala Dosa', price: 60, prep_time_seconds: 25, is_available: true },
   ];
 
   await MenuItem.insertMany([...arunMenuItems, ...marinaMenuItems]);

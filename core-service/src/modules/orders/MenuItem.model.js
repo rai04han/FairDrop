@@ -8,6 +8,10 @@ const mongoose = require('mongoose');
 
 const menuItemSchema = new mongoose.Schema(
   {
+    _id: {
+      type: String,
+      default: () => new mongoose.Types.ObjectId().toString(),
+    },
     restaurant_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

@@ -10,7 +10,7 @@
 ## 1. Fix Summary Matrix
 
 | Fix ID | Description | Status | Commit | Files Modified | Evidence & Verification |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **F1** | Remove customer fees (delivery, platform, GST); total = item subtotal; simplify mock payment to single Place Order button (FR-59, D4) | **FIXED** | `2364a58` | `fairdrop_app/lib/services/cart_service.dart`<br>`fairdrop_app/lib/screens/customer/cart_screen.dart`<br>`fairdrop_app/lib/screens/customer/mock_payment_screen.dart`<br>`fairdrop_app/test/customer_flow_test.dart` | `flutter analyze`: No issues found;<br>`flutter test`: 99/99 passed;<br>Cart fee lines removed, subtotal ₹360 matches total ₹360 |
 | **F2** | Idempotent duplicate `delivered` status calls (HTTP 200) & rider ownership check (HTTP 403) (FR-74) | **FIXED** | `09c2533` | `core-service/src/modules/orders/order.controller.js`<br>`core-service/tests/orders.test.js` | `core-service npm test`: 73/73 passed;<br>`npm run smoke`: 14/14 passed |
 | **F3** | Register both `/health` and `/api/health` endpoints on pay-service | **FIXED** | `ca1bb67` | `pay-service/src/server.js` | `curl.exe http://localhost:3001/health`: HTTP 200 OK;<br>`curl.exe http://localhost:3001/api/health`: HTTP 200 OK;<br>`pay-service npm test`: 23/23 passed |
@@ -66,17 +66,20 @@
    - Dynamic 7-day future timestamp calculation to prevent timezone/midnight rollover test flakiness while asserting 7-day notice banner.
 
 ### Root Cause Analysis: Blank Screen on Physical Android Phone vs. Chrome (R3/R4/R5)
+
 1. **Unbounded Flex Constraints from Global Theme**: In `lib/config/theme.dart`, `filledButtonTheme` specified `minimumSize: const Size.fromHeight(52)` and `outlinedButtonTheme` specified `minimumSize: const Size.fromHeight(48)`. In Flutter, `Size.fromHeight(h)` evaluates to `Size(double.infinity, h)`. When buttons were used inside unconstrained horizontal flex layouts (`Row` or `AlertDialog.actions`), the buttons demanded infinite width, causing Flutter's layout engine to throw an unhandled assertion exception (`BoxConstraints forces an infinite width`).
 2. **Platform Difference (Android Release/Profile vs. Chrome Web)**: On a physical Android device in profile/release mode, an unhandled layout assertion in a widget subtree causes Flutter's release `ErrorWidget` to render a blank grey/white screen, aborting the rendering pipeline. In Chrome (desktop browser), developers/testers ran at wide viewports (1200px+) and widget unit tests in `customer_flow_test.dart` instantiated `MaterialApp` without the app's `FairDropTheme.lightTheme`, completely masking the infinite width theme constraint.
 3. **Wi-Fi Network Timeout & Silent Mock Fallback**: In `restaurant_menu_screen.dart` (~L83) and `restaurant_list_screen.dart` (~L77), HTTP calls used a 1-second timeout. Over physical Wi-Fi, network latency routinely exceeded 1.0s, triggering immediate timeouts. The code caught the error and silently loaded hardcoded static fallback items, which then immediately hit the infinite-width button layout crash.
 
 ### Root Cause Analysis: TypeError "Kadappakkada Junction" & Rider Accept Blank Screen (F11 / R7)
+
 1. **Source of Value & Unsafe Type Cast**: In `rider_home_screen.dart` (~L169), the fallback argument object passed `'delivery_address': 'Kadappakkada Junction'` as a raw `String`. In `order_acceptance_screen.dart` (~L235), `(_order?['delivery_address'] as Map<String, dynamic>?)?['area']` attempted a direct cast of `String` to `Map<String, dynamic>?`, throwing `TypeError: "Kadappakkada Junction": type 'String' is not a subtype of type 'Map<String, dynamic>?'`. Furthermore, in `order.dart`, `OrderAddress.fromJson(Map<String, dynamic> json)` threw a runtime cast exception whenever an order payload contained a string address.
 2. **Backend Response Shape Consistency**: Cross-examination of `core-service/src/modules/orders/order.controller.js` verified that `POST /api/orders` and `GET /api/orders/rider/active` consistently return `delivery_address: { label: string, latitude: number, longitude: number }` and `restaurant_address: { label: string, latitude: number, longitude: number }`. There is no schema inconsistency between backend endpoints; the bug was strictly triggered by client-side fallback/mock arguments and unsafe type-casting in Dart.
 3. **Blank Screen Failure Mode**: When unhandled Dart exceptions occur inside a widget's `build()` method, Flutter renders a blank grey error container in release/profile mode. Added explicit error state handling with Retry and Back buttons (`btn_retry_acceptance`, `btn_back_acceptance`, `btn_retry_rider_home`, `btn_back_rider_home`) so malformed data never produces a blank screen.
 4. **Additional Files Touched**: `fairdrop_app/lib/screens/active_delivery_screen.dart` was modified to also utilize safe address parsing (`_extractAddress`), preventing an identical `TypeError` crash when the rider accepts the order and transitions to the active delivery tracker.
 
 ### Root Cause Analysis: Hardcoded Shift Card and Fake Offer Card on Rider Home (F12 / R1/R2)
+
 1. **Fabricated Shift and Offer Mock Data**: `rider_home_screen.dart` had static fallback variables initialized with mock values (`_todayEarnings = 685.0`, `_activeHoursToday = 4.3`, etc.) and rendered a hardcoded "Today's Shift" card with fake breakdown lines (`₹420`, `₹95`, `₹120`, `+₹50`). In addition, it rendered a hardcoded "Instant Match" offer card with a self-looping local countdown timer even when no order existed on the server.
 2. **Narrow Viewport Layout Overflows**: On 360px and 393px mobile screens, unconstrained horizontal rows in the live status strip and shift breakdown card overflowed by 20–56px.
 3. **Remediation**:
@@ -86,6 +89,7 @@
    - Wrapped horizontal header rows and shift breakdown chips in `Expanded`, `Flexible`, and `FittedBox` to completely prevent RenderFlex overflows on mobile viewports.
 
 ### Root Cause Analysis: Pay Analytics Balanced Framing and Incentive Calculation (F13 / R6)
+
 1. **Unbalanced Framing and Unsourced Claims**: The original analytics screen presented an artificial 10-delivery / ₹500 "cliff quota trap" model with an unsourced assertion that "over 80% of shifts fail quota".
 2. **Illustrative Benchmark Alignment**:
    - Replaced the cliff model with the single-source Zomato incentive ladder (28 Jun screenshot benchmark: 19 orders = ₹306, 23 = ₹383, 25 = ₹434, 27 = ₹510), clearly labeled as an "illustrative example".
@@ -98,6 +102,7 @@
 3. **Architectural Separation**: Implemented purely in a client-side helper (`fairdrop_app/lib/utils/incentive_analytics.dart`) and `analytics_screen.dart` without modifying backend `payEngine.js` formulas or the `/api/pay/calculate` contract.
 
 ### Root Cause Analysis: HTTP 403 Forbidden on GET /api/admin/pay-config/history (F14 / R8)
+
 1. **Endpoint Authorization**: In `pay-service/src/routes/adminRoutes.js`, `GET /api/admin/pay-config/history` is guarded by `verifyToken` and `requireRole('admin')`.
 2. **Caller Identification**:
    - `fairdrop_app/lib/screens/admin_panel_screen.dart` calls `ApiService.getConfigHistory()`. When accessed by an admin, the JWT has role `admin` and succeeds with HTTP 200.
@@ -113,7 +118,7 @@
 ## 3. Full Gate Verification Results
 
 | Check | Result | Exact Summary Line |
-|---|---|---|
+| --- | --- | --- |
 | **core-service: npm test** | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 33719.4828` |
 | **pay-service: npm test** | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 6548.7008` |
 | **root: npm run seed; npm run smoke** | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (8.47s)` |
@@ -155,6 +160,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## Live Rehearsal Fix: Rider Order Dispatch & Zone Map Accessibility
 
 ### Root Causes
+
 1. **Order Allocation Desync**:
    - `_RiderHomeScreenState` in Flutter hardcoded `_isOnline = true` in Dart state while the database defaulted to `rider_profile.is_online = false`. When the user logged in, the screen displayed "• Online", but MongoDB treated the rider as offline. Orders placed by customers received `allocation: 'no_rider_available'` with `rider_id = null`.
    - When an unallocated queued order was waiting, `GET /api/orders/rider/active` only checked `{ rider_id: req.user.id }` and never evaluated unallocated orders for idle online riders.
@@ -165,6 +171,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
    - `/zone-map` was not directly accessible from the bottom navigation or the top header badge.
 
 ### Fixes Applied
+
 1. **`fairdrop_app/lib/screens/rider_home_screen.dart`**:
    - In `_loadStats()`, synchronized `_isOnline` with `stats['is_online']` and automatically activated `CoreApiService.setRiderStatus(isOnline: true)` upon entering the active shift.
    - Replaced customer `Orders` item in `BottomNavigationBar` with `Zone Map` (`Icons.map_rounded`, route `/zone-map`).
@@ -176,8 +183,9 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
    - In `updateOrderStatus`: When `new_status === 'delivered'`, automatically evaluates and allocates queued pending orders to available riders.
 
 ### Verification Gate Results
+
 | Check | Result | Exact Summary Line |
-|---|---|---|
+| --- | --- | --- |
 | `core-service: npm test` | **PASS** | `ℹ tests 73 | ℹ suites 21 | ℹ pass 73 | ℹ fail 0 | ℹ duration_ms 57959.6732` |
 | `pay-service: npm test` | **PASS** | `ℹ tests 24 | ℹ suites 8 | ℹ pass 24 | ℹ fail 0 | ℹ duration_ms 25014.7686` |
 | `Master Seed & Smoke Test` | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (10.34s)` |
@@ -190,8 +198,9 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## F15: Single Source of Truth for Payout Figures (AUDIT-F15 / R9, R12, R13, R14)
 
 ### Payout Figures Source Matrix
+
 | Screen / Card | Payout Figure / Metric | Authoritative Source | Prior Defect / Root Cause | F15 Single-Source-of-Truth Fix |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | **Home shift card** (`RiderHomeScreen`) | Total shift pay & itemized rows | `GET /api/riders/stats` (`today_earnings`, `base_pay_today`, `distance_pay_today`, `wait_pay_today`, `surge_pay_today`, `floor_topup_today`) | Placed entire payout under single line "Base Pay & Distance" with rogue "+₹199 buffer" | Split into individual itemized breakdown lines from backend stats; removed rogue "+₹199 buffer". |
 | **Home shift card** (`RiderHomeScreen`) | Deliveries count & grammar | `GET /api/riders/stats` (`deliveries_today`) | Grammatical defect: `"1 drops"` | Fixed grammar: `"${_deliveriesToday} ${_deliveriesToday == 1 ? 'drop' : 'drops'}"` |
 | **Active Delivery meter** (`ActiveDeliveryScreen`) | Estimated delivery pay | `ApiService.getPayConfig()` + distance formula | Defaulted base rate to ₹30.00; wait comp added ₹2/min continuously; labeled "DELIVERY EARNINGS METER" with "guaranteed min" | Dynamic `_baseRate` from pay-service config (₹15.00); flat wait comp (flat ₹10.00 bonus strictly after wait > 60s threshold, 55s = ₹0); labeled "Estimated delivery pay" (no "guaranteed min"). |
@@ -199,6 +208,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 | **Rider Dashboard** (`RiderDashboardScreen`) | Total earnings, Deliveries, Avg Hourly | `GET /api/riders/stats` & `GET /api/pay/ledger/rider/:id` | Stray `4.3 hrs` constant; computed local figures | Bind to backend stats/ledger; shows "—" when engaged time is 0. |
 
 ### Root Causes & Fixes Applied
+
 1. **Active Delivery Screen Defaults & Wait Logic (R9, R12)**:
    - Root Cause: `active_delivery_screen.dart` initialized `_baseRate = 30.0` and computed wait comp as `_elapsedWaitMins * 2.0`.
    - Fix: Bound base rate to `ApiService.getPayConfig()`, defaulting to ₹15.00. Wait compensation is flat ₹10.00 only after exceeding wait threshold (60s), ensuring 55s wait earns ₹0.00. Renamed header to "Estimated delivery pay" without "guaranteed min". Wrapped pay text in `FittedBox` to prevent 80px RenderFlex overflow at 393px.
@@ -210,6 +220,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
    - Fix: Reordered lines so Base, Distance, Surge, and Wait Comp visually precede and sum to Total Delivery Pay. Added a green `VERIFIED` badge when payload originates from the pay-service server, and an amber `CACHED` badge with an interactive `Retry` button on network error/fallback.
 
 ### Files Modified
+
 - `core-service/src/modules/riders/rider.controller.js`
 - `fairdrop_app/lib/screens/rider_home_screen.dart`
 - `fairdrop_app/lib/screens/active_delivery_screen.dart`
@@ -218,6 +229,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `docs/FIX_REPORT.md`
 
 ### Verification Evidence
+
 - `core-service npm test`: 73/73 tests passed.
 - `fairdrop_app flutter analyze`: No issues found!
 - `fairdrop_app flutter test`: 125/125 tests passed (including 4 new widget tests in `f15_payout_sources_test.dart` asserting zero layout exceptions at 393px width).
@@ -227,11 +239,13 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## F16: Statutory Floor Top-Up Redesign (AUDIT-F16 / R10, R11)
 
 ### Root Causes
+
 1. **Per-Delivery Ledger Distortion**: Prior to F16, statutory wage floor top-up was embedded inside the itemized per-delivery ledger (7th line item), conflating instantaneous order payouts with shift-level hourly wage guarantees.
 2. **Lack of Cumulative Engaged-Time Block Evaluation**: The statutory minimum wage floor (Kerala baseline ₹70/hr, `min_wage_per_hour`) was not evaluated across cumulative engaged time (order assigned/accepted to delivered). Idle online time was improperly conflated, and strong hours were allowed to arbitrarily offset weak hours.
 3. **Stray Hardcoded Dashboard Constant**: In `rider_dashboard_screen.dart:57`, active hours was hardcoded as `double get _activeHours => _totalDeliveries > 0 ? 4.25 : 0.0;`, producing a static `"4.3 hrs active"` metric regardless of actual delivery timestamps.
 
 ### Architectural Redesign & Policy Implementation
+
 1. **Cumulative Engaged-Time Block Evaluation (`evaluateFloorBlocks`)**:
    - Engaged time is strictly measured as the duration between order assignment/acceptance (`assigned_at`) and delivery completion (`delivered_at`). Idle waiting for dispatches does not count towards engaged time.
    - Cumulative engaged minutes accumulate across orders throughout the shift date.
@@ -253,6 +267,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
    - Supported environment variable override `FLOOR_WINDOW_MINUTES_OVERRIDE` in `payRoutes.js` for rapid evaluation testing during live demonstrations without bypassing the 7-day advance notice requirement (`PUT /api/admin/pay-config`). Documented in `docs/DEMO_RUNBOOK.md`.
 
 ### Tests Updated and Added
+
 - **`pay-service/tests/payEngine.test.js`**:
   - Asserted `floor_topup === 0` in per-delivery `calculatePay` (delivery ledger has 6 lines).
   - Added 5 required tests for `evaluateFloorBlocks`:
@@ -268,6 +283,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - **`fairdrop_app/test/f16_floor_redesign_test.dart`**: Added widget tests for all 3 touched screens (`PayBreakdownScreen`, `RiderDashboardScreen`, `RiderHomeScreen`) at 393px width with 0 layout exceptions.
 
 ### Files Modified
+
 - `database/mysql/schema.sql`
 - `scripts/seed.js`
 - `pay-service/src/payEngine.js`
@@ -289,6 +305,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `docs/FIX_REPORT.md`
 
 ### Verification Evidence
+
 - `core-service npm test`: 73/73 tests passed.
 - `pay-service npm test`: 29/29 tests passed.
 - `fairdrop_app flutter analyze`: No issues found!
@@ -301,7 +318,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ### 1. Delay Field Tracing Across Layers Matrix
 
 | Layer | Field Name | Allowed / Accepted Values | What Callers Send | Defect / Failure Mode |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | **Flutter App** (`active_delivery_screen.dart`, `order.dart`) | `delay_type` (alias: `type`) | `'traffic'`, `'restaurant'`, `'railway'`, `'weather'`, `'none'` | Dialog options: `'traffic'`, `'restaurant'`, `'railway'`, `'weather'` | Allowed `'weather'`, but backend didn't accept it. |
 | **Flutter App** (`active_delivery_screen.dart`, `order.dart`) | `source` (alias: `delay_source`) | `'rider_report'`, `'system_log'`, `'api_mock'`, `'none'` | Hardcoded: `'rider_report'` | Mongoose threw validation error; MySQL truncated and threw 500. |
 | **core-service Mongoose** (`Order.model.js`) | `delay_context.delay_type` | Prior: `['traffic', 'restaurant', 'railway', 'none']`<br>Fixed: `['traffic', 'restaurant', 'railway', 'weather', 'none']` | Sent by app via `delay_context.delay_type` or `delay_type` | Rejected `'weather'` with Mongoose ValidationError. |
@@ -313,7 +330,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ### 2. Comprehensive Field Cross-Layer Comparison (core-service to pay-service)
 
 | Payload Field | core-service Type & Value Source | pay-service Validation | MySQL Column Type | Compatibility Status |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `order_id` | String (`String(order._id)`) | Non-empty string/number | `VARCHAR(64) PRIMARY KEY` | Compatible |
 | `rider_id` | String (`String(rider.rider_id \|\| rider._id)`) | Non-empty string/number | `VARCHAR(64) NOT NULL` | Compatible |
 | `restaurant_id` | String (`String(order.restaurant_id)`) | String/number | `VARCHAR(64) NULL` | Compatible |
@@ -329,6 +346,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 | `delay_minutes` | Number (`delay_context?.delay_minutes \|\| 0`) | Number >= 0 | `INT NOT NULL DEFAULT 0` | Compatible |
 
 ### 3. Failure Safety & Rollback Implementation
+
 - In `core-service/src/modules/orders/order.controller.js`:
   - When `new_status === 'delivered'`, pay calculation is executed before committing status.
   - If `calculatePay(order, rider)` throws (e.g. pay-service unavailable, returns 500, or network drops), the catch block preserves the order at its prior state:
@@ -340,9 +358,30 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
   - When retry request arrives later, `delivered_at` is recalculated, `calculatePay` succeeds, status transitions to `delivered`, and subsequent duplicate requests return HTTP 200 idempotent per F2.
 
 ### 4. Verification Evidence
+
 - `pay-service npm test`: 33/33 tests passed (validates canonical delay types/sources, rejects unknown source with 400, validates MySQL persistence for all delay reasons without data truncation).
 - `core-service npm test`: 76/76 tests passed (validates 400 on unknown delay source, validates report delay for each reason -> deliver -> pay computed with delay reason preserved, validates simulated pay failure keeping order at picked_up with 502 and subsequent retry succeeding with 200).
 - `fairdrop_app flutter test test/f16_floor_redesign_test.dart`: 3/3 passed.
 
+---
 
+## F23: Menu Item String IDs & Toggle (AUDIT-F23)
+
+### 1. Root Cause
+- When testing the restaurant menu management flow or when fallback demo items were loaded, `fairdrop_app/lib/screens/restaurant/menu_management_screen.dart` used fallback menu items with string IDs (`item-101`, `item-102`, `item-103`), and `add_edit_menu_item_screen.dart:99` generated string IDs (`item-${DateTime.now().millisecondsSinceEpoch}`).
+- When the restaurant attempted to update or toggle availability on item-102 via `PATCH /api/restaurants/menu/item-102`, Mongoose attempted to cast `"item-102"` into an `ObjectId` in `MenuItem.findById(req.params.item_id)`, throwing:
+  `updateMenuItem error: Cast to ObjectId failed for value "item-102" (type string) at path "_id" for model "MenuItem"` and returning HTTP 500.
+
+### 2. Implementation & Design Choice
+- Checked all references to menu item IDs across `Order.model.js`, `order.controller.js`, `restaurant.controller.js`, tests, and `scripts/e2e-smoke.js`:
+  - `MenuItem.model.js`: Defined `_id: { type: String, default: () => new mongoose.Types.ObjectId().toString() }`. This allows explicit string IDs (`item-101`, `item-102`) to be stored without schema errors, while auto-generating a valid string ObjectId for newly created items.
+  - `Order.model.js`: Updated `items[].item_id` to `{ type: String, default: null }` so customer orders can reference both seeded string IDs and generated IDs without casting failures.
+  - `restaurant.controller.js`: In `updateMenuItem`, added explicit check for `CastError` returning 404 defensively.
+  - `scripts/seed.js`: Explicitly assigned `_id: 'item-101'`, `_id: 'item-102'`, `_id: 'item-103'` to Hotel Arun's seeded menu items, and `_id: 'item-201'`, `_id: 'item-202'` to Marina's menu items, making seeded database items and Flutter fallback items 100% identical.
+
+### 3. Verification & Test Evidence
+- Added tests to `core-service/tests/restaurants.test.js`:
+  - `updates and toggles a seeded item by its seeded string ID (item-102)`: Updates name to `"Fish Curry Meal Special"`, price to 135, prep time to 50s, then toggles `is_available: false` via `PATCH /api/restaurants/menu/item-102/availability`, verifying 200 response and MongoDB persistence.
+  - `updates and toggles a newly created item by its generated ID`: Creates a new menu item via `POST /api/restaurants/menu`, updates it, and toggles availability via `PATCH /api/restaurants/menu/:id/availability`, verifying 200 response and MongoDB persistence.
+- `core-service npm test`: 78/78 tests passed.
 
