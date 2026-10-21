@@ -368,11 +368,13 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## F23: Menu Item String IDs & Toggle (AUDIT-F23)
 
 ### 1. Root Cause
+
 - When testing the restaurant menu management flow or when fallback demo items were loaded, `fairdrop_app/lib/screens/restaurant/menu_management_screen.dart` used fallback menu items with string IDs (`item-101`, `item-102`, `item-103`), and `add_edit_menu_item_screen.dart:99` generated string IDs (`item-${DateTime.now().millisecondsSinceEpoch}`).
 - When the restaurant attempted to update or toggle availability on item-102 via `PATCH /api/restaurants/menu/item-102`, Mongoose attempted to cast `"item-102"` into an `ObjectId` in `MenuItem.findById(req.params.item_id)`, throwing:
   `updateMenuItem error: Cast to ObjectId failed for value "item-102" (type string) at path "_id" for model "MenuItem"` and returning HTTP 500.
 
 ### 2. Implementation & Design Choice
+
 - Checked all references to menu item IDs across `Order.model.js`, `order.controller.js`, `restaurant.controller.js`, tests, and `scripts/e2e-smoke.js`:
   - `MenuItem.model.js`: Defined `_id: { type: String, default: () => new mongoose.Types.ObjectId().toString() }`. This allows explicit string IDs (`item-101`, `item-102`) to be stored without schema errors, while auto-generating a valid string ObjectId for newly created items.
   - `Order.model.js`: Updated `items[].item_id` to `{ type: String, default: null }` so customer orders can reference both seeded string IDs and generated IDs without casting failures.
@@ -380,6 +382,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
   - `scripts/seed.js`: Explicitly assigned `_id: 'item-101'`, `_id: 'item-102'`, `_id: 'item-103'` to Hotel Arun's seeded menu items, and `_id: 'item-201'`, `_id: 'item-202'` to Marina's menu items, making seeded database items and Flutter fallback items 100% identical.
 
 ### 3. Verification & Test Evidence
+
 - Added tests to `core-service/tests/restaurants.test.js`:
   - `updates and toggles a seeded item by its seeded string ID (item-102)`: Updates name to `"Fish Curry Meal Special"`, price to 135, prep time to 50s, then toggles `is_available: false` via `PATCH /api/restaurants/menu/item-102/availability`, verifying 200 response and MongoDB persistence.
   - `updates and toggles a newly created item by its generated ID`: Creates a new menu item via `POST /api/restaurants/menu`, updates it, and toggles availability via `PATCH /api/restaurants/menu/:id/availability`, verifying 200 response and MongoDB persistence.
@@ -390,11 +393,13 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## F17: Hub Fairness Index & Dynamic Formula Breakdown Modal (AUDIT-F17 / R17, R18)
 
 ### 1. Root Causes & Findings
+
 - **Unverified Claims & Road Conditions**: On `RiderHomeScreen`, the Kollam Hub Fairness Index card displayed an unsourced `"+₹12 above mandate"` callout and a static `"Road conditions clear across Kollam Central"` status line that was not connected to live sensor/weather APIs.
 - **Premature Realized Pay Display**: When a rider logged in with 0 completed engaged hours, the Realized pay tile displayed `"₹0.0/hr"`, confusing riders into believing they were underpaid rather than indicating that insufficient engaged hours had elapsed today.
 - **Opaque Pay Formula**: The formula action led riders to a static summary instead of rendering the comprehensive live policy rate card and scheduled revisions from `pay-service`.
 
 ### 2. Remediation Applied
+
 - **`fairdrop_app/lib/screens/rider_home_screen.dart`**:
   - Added authoritative subtitle under `Kollam Hub Fairness Index`: `"Average pay per engaged hour for riders in this hub today vs the statutory floor."`
   - In Realized pay tile: when completed engaged hours = 0, displays `"Not enough completed hours today"`. When engaged hours > 0, computes `_hourlyRate` strictly from completed shift earnings and engaged time.
@@ -407,6 +412,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
     - Wrapped horizontal row items in `Expanded` to guarantee zero layout exceptions at 393px mobile width.
 
 ### 3. Verification & Test Evidence
+
 - **`fairdrop_app/test/f17_hub_fairness_test.dart`**:
   - Tested at 393px width (iPhone 16 / Pixel 7 mobile baseline).
   - Test 1: Verifies Hub Fairness Index card renders exact subtitle, displays `"Not enough completed hours today"` for new rider, renders statutory floor, and verifies `+₹12 above mandate` and road conditions are deleted.
@@ -419,6 +425,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## F18: Rider Profile Real Stats, Badges, & Revision Citation (AUDIT-F18 / R19)
 
 ### 1. Root Causes & Findings
+
 - **Fabricated Metrics**: `ProfileScreen` rendered hardcoded static numbers (`'32'` Deliveries, `'₹68/hr'` Avg earnings) regardless of the authenticated rider's actual deliveries or cumulative engaged hours.
 - **Unverified Claims**: The driver profile header rendered a `'Verified Partner'` badge without backend verification. In the account navigation menu, `Safety & Insurance` displayed `'Accident & Health Covered'` despite no active insurance policy integration, and `Vehicle Details` hardcoded `'EV Scooter (KL-02)'`.
 - **Wait Compensation Label Mismatch**: The upcoming revision banner labeled wait compensation as `'₹X.XX/m'` (per minute) instead of a flat bonus from `pay-service`.
@@ -426,6 +433,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - **Narrow Viewport Overflow**: On 393px mobile screens, the revision rates chip row overflowed horizontally by 88px due to unconstrained columns.
 
 ### 2. Remediation Applied
+
 - **`fairdrop_app/lib/screens/profile_screen.dart`**:
   - Bound `Deliveries` and `Avg earnings` directly to `CoreApiService.getTodayStats()`. When completed engaged hours = 0, displays clean zeros (`'0'` deliveries and `' — '` avg earnings).
   - Labeled whether statutory floor top-ups are included in average earnings (`'(incl. floor top-up)'` vs `'(excl. floor top-up)'`).
@@ -438,6 +446,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
   - Wrapped each rate chip in `Expanded` with `FittedBox` scaling, completely eliminating the 88px RenderFlex overflow at 393px mobile width.
 
 ### 3. Verification & Test Evidence
+
 - **`fairdrop_app/test/profile_screen_test.dart`**:
   - Test 1: Verifies removal of `'Verified Partner'`, removal of `'Accident & Health Covered'`, and clean `'0'` / `' — '` display when engaged hours are 0.
   - Test 2: Verifies revision banner renders `'Flat bonus'` and `₹2.50` (verifies `₹2.50/m` is gone), and asserts `"Fairwork Principle 3 (Fair Contracts)"` citation.
@@ -451,6 +460,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## F19: Layout Overflows & Zone Map Usability (AUDIT-F19 / R15, R16)
 
 ### 1. Root Causes & Findings
+
 - **Active Delivery Title Overflow (R15)**: On `ActiveDeliveryScreen`, the title row contained an `IconButton` with default 48px constraints, `FairDropLogo(fontSize: 22)`, unconstrained `Text('Active Delivery')`, and `KL-02` badge. On 393px width screens, this exceeded viewport width, causing a 28px RenderFlex overflow.
 - **Zone Map Bottom Cards Clipping & Header Overflow (R16)**:
   - In `ZoneMapScreen`, the bottom cards horizontal `ListView.builder` used default `Clip.hardEdge` without horizontal padding, clipping the leftmost card border and shadow.
@@ -459,6 +469,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - **Missing Hub Legend (R16)**: The map lacked a floating legend identifying the pilot hub zones and their respective codes.
 
 ### 2. Remediation Applied
+
 - **`fairdrop_app/lib/screens/active_delivery_screen.dart`**:
   - Set `padding: EdgeInsets.zero` and `constraints: const BoxConstraints()` on the back `IconButton`.
   - Adjusted logo to `fontSize: 20` and wrapped title in `Expanded(child: Text('Active Delivery', overflow: TextOverflow.ellipsis))`, completely resolving the 28px overflow.
@@ -469,6 +480,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
   - Bottom Sheet & Card Clipping: Added `clipBehavior: Clip.none`, `padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2)`, and `height: 108` to the horizontal `ListView.builder`. Wrapped the sheet header title in `Expanded` with ellipsis, eliminating the 244px overflow.
 
 ### 3. Verification & Test Evidence
+
 - **`fairdrop_app/test/f19_layout_test.dart`**:
   - Test 1 (393px): Verifies `ActiveDeliveryScreen` title row at 393px width with 0 layout exceptions (`tester.takeException() == null`).
   - Test 2 (393px): Verifies `ZoneMapScreen` renders all 3 polygon centroid markers (`polygon_marker_KLM-CHK`, `polygon_marker_KLM-PLY`, `polygon_marker_KLM-KLK`), floating legend `"Pilot hub zones"`, and bottom sheet cards at 393px width with 0 layout exceptions.
@@ -483,6 +495,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 ## F20: Sweep & Literal Audit Table (AUDIT-F20)
 
 ### 1. Root Causes & Findings
+
 - **Comprehensive Audit Scope**: As mandated by the audit guidelines and rehearsal defect findings, an exhaustive sweep of all literal values, currency symbols (`₹`), hardcoded strings, and formula displays was conducted across the entire `fairdrop_app/lib/` codebase.
 - **Wait Compensation Subtitle Defect**: In `fairdrop_app/lib/screens/active_delivery_screen.dart:816-818`, the timer subtitle still contained the old legacy per-minute display:
   `Wait threshold: 1 min. ₹2.00/min compensation starts after 1 min.` and `+${formatCurrency(_elapsedWaitMins * 2.0)} (whole-min ceiling per FR-18/D10)`
@@ -490,6 +503,7 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - **Rider Dashboard Analytics Teaser Alignment**: In `fairdrop_app/lib/screens/rider_dashboard_screen.dart:481-509`, text references described "cliff bonus models" rather than the balanced tiered incentive ladder and stated model parameters defined in PRD FR-34–FR-36.
 
 ### 2. Remediation Applied
+
 - **`fairdrop_app/lib/screens/active_delivery_screen.dart`**:
   - Replaced the hardcoded rate string with dynamic bindings from the active pay config:
     `_elapsedWaitSeconds > (_waitThresholdMins * 60) ? 'Wait compensation active: +${formatCurrency(_waitCompensation)} flat bonus' : 'Wait threshold: ${_waitThresholdMins}m. Flat +${formatCurrency(_waitCompensation)} bonus applies after ${_waitThresholdMins}m.'`
@@ -618,5 +632,35 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 | `fairdrop_app/lib/utils/format_utils.dart:12` | `'₹${val.toStringAsFixed(2)}'` | **config-derived** | Bound to live API response / pay-service ledger |
 
 ### 4. Verification Evidence
+
 - `flutter analyze`: No issues found!
 - `flutter test test/active_delivery_test.dart test/analytics_dashboard_test.dart test/f19_layout_test.dart`: 18/18 tests passed!
+
+---
+
+## F21: Analytics Wording Follow-Up & Cost Neutrality (AUDIT-F21 / R6)
+
+### 1. Root Causes & Findings
+- **Missing Explicit Cost-Neutrality and Capping Claims**: PRD FR-34–FR-36 and rehearsal defect finding R6 require explicit framing that the FairDrop linear incentive model is cost-neutral with the top Zomato incentive tier (27 orders: ₹510 FairDrop = ₹510 Zomato), incurs extra platform cost below 27 orders (to support lower-volume shifts equitably), and caps the per-order extra payout at 27 orders.
+- **Clarification in Parity Summary & Policy Criteria**: Riders reviewing the parity table required clear context that the higher per-order payout at lower thresholds represents platform investment in wage predictability rather than unconstrained deficit spending.
+- **393px Mobile Width Overflow Remediation**: Testing on the mobile baseline (393px width) revealed RenderFlex overflows in the chart legend pills, the assumptions card title row, assumption chips inside the `Wrap`, and the policy notes card title row.
+
+### 2. Remediation Applied
+- **`fairdrop_app/lib/utils/incentive_analytics.dart`**:
+  - Added authoritative policy constant `IncentiveAnalytics.noteCostNeutrality`:
+    `"Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders, with per-order extra capped at 27 orders."`
+  - Preserved `IncentiveAnalytics.noteBreakEven` verbatim to maintain backward compatibility and mathematical rigor (`"The platform's break-even rate = expected Zomato incentive spend ÷ expected orders per rider."`).
+- **`fairdrop_app/lib/screens/analytics_screen.dart`**:
+  - In `_buildParityTableCard()`: Updated the summary card beneath the parity table to explicitly include `noteCostNeutrality`, rendering the cost-neutrality baseline and platform cost structure alongside the bold equal pay highlight.
+  - In `_buildPolicyNotesCard()`: Appended `IncentiveAnalytics.noteCostNeutrality` as a dedicated bullet point in the policy transparency list.
+  - Wrapped `Text` in `_buildLegendPill` in `Flexible`.
+  - Wrapped `Text` in `_buildAssumptionsCard` title row in `Expanded`.
+  - Wrapped value text in `_buildAssumptionChip` in `Flexible` inside `Row(mainAxisSize: MainAxisSize.min)` with `overflow: TextOverflow.ellipsis`.
+  - Wrapped `Text` in `_buildPolicyNotesCard` title row in `Expanded`.
+  - Guaranteed 0 layout exceptions at 393px mobile width.
+
+### 3. Verification & Test Evidence
+- **`fairdrop_app/test/analytics_dashboard_test.dart`**:
+  - Added dedicated test `AnalyticsScreen renders at 393px mobile width with 0 layout exceptions (AUDIT-F21)` verifying that all parity cards, policy notes, and cost-neutrality statements render cleanly with `tester.takeException() == null`.
+  - All 11 widget tests in `test/analytics_dashboard_test.dart` passing.
+- `fairdrop_app flutter analyze`: No issues found!

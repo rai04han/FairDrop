@@ -345,5 +345,29 @@ void main() {
       expect(find.textContaining('NaN'), findsNothing);
       expect(find.textContaining('Infinity'), findsNothing);
     });
+
+    testWidgets('AnalyticsScreen renders at 393px mobile width with 0 layout exceptions (AUDIT-F21)', (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: AnalyticsScreen(
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.textContaining('Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders, with per-order extra capped at 27 orders.'),
+        findsWidgets,
+      );
+    });
   });
 }

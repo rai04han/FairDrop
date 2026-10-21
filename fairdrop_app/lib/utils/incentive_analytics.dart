@@ -96,4 +96,7 @@ class IncentiveAnalytics {
 
   static const String noteBreakEven =
       "The platform's break-even rate = expected Zomato incentive spend ÷ expected orders per rider.";
+
+  static const String noteCostNeutrality =
+      'Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders, with per-order extra capped at 27 orders.';
 }

@@ -682,12 +682,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
         ),
         const SizedBox(width: 6),
-        Text(
-          label,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: FairDropColors.brandNavy,
+        Flexible(
+          child: Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: FairDropColors.brandNavy,
+            ),
           ),
         ),
       ],
@@ -788,23 +790,42 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           const SizedBox(height: 12),
 
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: FairDropColors.mintBg,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.check_circle_rounded, color: FairDropColors.brandGreen, size: 16),
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(Icons.check_circle_rounded, color: FairDropColors.brandGreen, size: 16),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'Equal pay at 27 orders with peak bonus: ₹510 FairDrop = ₹510 Zomato.',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: FairDropColors.brandNavy,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Equal pay at 27 orders with peak bonus: ₹510 FairDrop = ₹510 Zomato.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: FairDropColors.brandNavy,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders, with per-order extra capped at 27 orders.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          height: 1.35,
+                          color: FairDropColors.brandNavy.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -852,12 +873,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             children: [
               const Icon(Icons.rule_rounded, color: FairDropColors.brandNavy, size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Stated Model Parameters & Assumptions',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: FairDropColors.brandNavy,
+              Expanded(
+                child: Text(
+                  'Stated Model Parameters & Assumptions',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: FairDropColors.brandNavy,
+                  ),
                 ),
               ),
             ],
@@ -925,12 +948,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               color: FairDropColors.slateMuted,
             ),
           ),
-          Text(
-            value,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: FairDropColors.brandNavy,
+          Flexible(
+            child: Text(
+              value,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: FairDropColors.brandNavy,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -954,12 +980,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             children: [
               const Icon(Icons.verified_user_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Policy Notes & Transparency Criteria',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+              Expanded(
+                child: Text(
+                  'Policy Notes & Transparency Criteria',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
@@ -970,6 +998,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           _buildPolicyBullet(IncentiveAnalytics.noteDailyVariation),
           const SizedBox(height: 8),
           _buildPolicyBullet(IncentiveAnalytics.noteBreakEven),
+          const SizedBox(height: 8),
+          _buildPolicyBullet(IncentiveAnalytics.noteCostNeutrality),
         ],
       ),
     );
