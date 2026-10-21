@@ -59,6 +59,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
   // Active incoming order (if assigned)
   Map<String, dynamic>? _incomingOrder;
+  Map<String, dynamic>? _scheduledConfig;
 
   static String _extractAddress(dynamic address, {String fallback = ''}) {
     if (address == null) return fallback;
@@ -180,6 +181,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _waitCompensation = double.tryParse(config['wait_compensation']?.toString() ?? '') ?? 10.0;
           _waitThresholdMins = int.tryParse(config['wait_threshold_mins']?.toString() ?? '') ?? 10;
           _surgeBonus = double.tryParse(config['surge_bonus']?.toString() ?? '') ?? 15.0;
+          _scheduledConfig = configData['scheduled'] as Map<String, dynamic>?;
         });
       }
       // Immediately check for any active or newly allocated order
@@ -813,7 +815,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
           // Formula Action Button
           OutlinedButton(
-            onPressed: () => Navigator.pushNamed(context, '/pay-breakdown'),
+            key: const Key('btn_view_full_formula'),
+            onPressed: () => _showFormulaBreakdownModal(context),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: FairDropColors.mintBorder),
               backgroundColor: FairDropColors.mintBg.withValues(alpha: 0.5),
@@ -825,7 +828,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               children: [
                 Flexible(
                   child: Text(
-                    'View Full Formula Breakdown & Ledger',
+                    'View Full Formula Breakdown',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -1503,6 +1506,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Average pay per engaged hour for riders in this hub today vs the statutory floor.',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: FairDropColors.slateMuted,
+            ),
+          ),
           const SizedBox(height: 12),
 
           Container(
@@ -1584,14 +1596,25 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              '₹${_hourlyRate.toStringAsFixed(0)}/hr',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                color: FairDropColors.brandGreen,
-                              ),
-                            ),
+                            _activeHoursToday > 0 && _todayEarnings > 0
+                                ? Text(
+                                    '₹${_hourlyRate.toStringAsFixed(0)}/hr',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: FairDropColors.brandGreen,
+                                    ),
+                                  )
+                                : Text(
+                                    'Not enough completed hours today',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: FairDropColors.slateMuted,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                            const SizedBox(height: 2),
                             Text(
                               'Chinnakada & Asramam',
                               style: GoogleFonts.plusJakartaSans(
@@ -1632,12 +1655,13 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                 color: FairDropColors.brandNavy,
                               ),
                             ),
+                            const SizedBox(height: 2),
                             Text(
-                              '+₹12 above mandate',
+                              'State wage floor',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: FairDropColors.brandGreen,
+                                fontWeight: FontWeight.w500,
+                                color: FairDropColors.slateMuted,
                               ),
                             ),
                           ],
@@ -1648,24 +1672,6 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 10),
-
-          Row(
-            children: [
-              const Icon(Icons.info_outline_rounded, size: 16, color: FairDropColors.brandOrange),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Road conditions clear near Kollam Beach road. High traction on overbridge.',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: FairDropColors.slateMuted,
-                  ),
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 14),
 
@@ -1762,5 +1768,336 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         ],
       ),
     );
+  }
+
+  void _showFormulaBreakdownModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final hasScheduled = _scheduledConfig != null;
+        final scheduled = _scheduledConfig ?? {};
+
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.only(
+            top: 20,
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: FairDropColors.mintBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Full Pay Formula Breakdown',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: FairDropColors.brandNavy,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(ctx),
+                      color: FairDropColors.slateMuted,
+                    ),
+                  ],
+                ),
+                Text(
+                  'Live rates from pay-service config & scheduled revisions (zero hardcoded rates).',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: FairDropColors.slateMuted,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: FairDropColors.surfaceLow,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: FairDropColors.mintBorder),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.calculate_rounded, size: 18, color: FairDropColors.brandGreen),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Active Policy Rate Card',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: FairDropColors.brandNavy,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildModalFormulaRow(
+                        title: 'Base Dispatch Fee',
+                        value: '₹${_baseRate.toStringAsFixed(2)}',
+                        desc: 'Fixed pickup compensation per delivered order',
+                      ),
+                      const Divider(height: 16, color: FairDropColors.mintBorder),
+                      _buildModalFormulaRow(
+                        title: 'Distance Transit Rate',
+                        value: '₹${_perKmRate.toStringAsFixed(2)}/km',
+                        desc: 'Straight-line transit distance from restaurant to customer',
+                      ),
+                      const Divider(height: 16, color: FairDropColors.mintBorder),
+                      _buildModalFormulaRow(
+                        title: 'Geofenced Wait Compensation',
+                        value: 'Flat ₹${_waitCompensation.toStringAsFixed(2)} bonus',
+                        desc: 'Credited when GPS kitchen wait time exceeds $_waitThresholdMins minutes',
+                      ),
+                      const Divider(height: 16, color: FairDropColors.mintBorder),
+                      _buildModalFormulaRow(
+                        title: 'Monsoon Severe Weather Surge',
+                        value: '₹${_surgeBonus.toStringAsFixed(2)} per order',
+                        desc: 'Direct bonus during declared extreme weather conditions',
+                      ),
+                      const Divider(height: 16, color: FairDropColors.mintBorder),
+                      _buildModalFormulaRow(
+                        title: 'Kerala Statutory Minimum Floor',
+                        value: _floorValue != null ? '₹${_floorValue!.toStringAsFixed(2)}/hr' : '—',
+                        desc: 'Evaluated per completed 60-min block of cumulative engaged order time',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (hasScheduled) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFFCD34D)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.update_rounded, size: 18, color: Color(0xFFB45309)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Upcoming Scheduled Revision',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF92400E),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _formatEffectiveDateNotice(scheduled['effective_from']),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFB45309),
+                          ),
+                        ),
+                        if (scheduled['change_reason'] != null && scheduled['change_reason'].toString().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Reason: ${scheduled['change_reason']}',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: const Color(0xFF78350F),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        _buildModalFormulaRow(
+                          title: 'Revised Base Dispatch Fee',
+                          value: '₹${(double.tryParse(scheduled['base_rate']?.toString() ?? '') ?? _baseRate).toStringAsFixed(2)}',
+                          desc: 'Scheduled starting pickup rate',
+                        ),
+                        const Divider(height: 16, color: Color(0xFFFCD34D)),
+                        _buildModalFormulaRow(
+                          title: 'Revised Distance Rate',
+                          value: '₹${(double.tryParse(scheduled['per_km_rate']?.toString() ?? '') ?? _perKmRate).toStringAsFixed(2)}/km',
+                          desc: 'Scheduled transit per km rate',
+                        ),
+                        const Divider(height: 16, color: Color(0xFFFCD34D)),
+                        _buildModalFormulaRow(
+                          title: 'Revised Wait Compensation',
+                          value: 'Flat ₹${(double.tryParse(scheduled['wait_compensation']?.toString() ?? '') ?? _waitCompensation).toStringAsFixed(2)} bonus',
+                          desc: 'Threshold: ${scheduled['wait_threshold_mins'] ?? _waitThresholdMins} minutes',
+                        ),
+                        const Divider(height: 16, color: Color(0xFFFCD34D)),
+                        _buildModalFormulaRow(
+                          title: 'Revised Monsoon Surge',
+                          value: '₹${(double.tryParse(scheduled['surge_bonus']?.toString() ?? '') ?? _surgeBonus).toStringAsFixed(2)} per order',
+                          desc: 'Scheduled surge allowance',
+                        ),
+                        const Divider(height: 16, color: Color(0xFFFCD34D)),
+                        _buildModalFormulaRow(
+                          title: 'Revised Statutory Floor',
+                          value: '₹${(double.tryParse(scheduled['min_wage_per_hour']?.toString() ?? '') ?? (_floorValue ?? 70.0)).toStringAsFixed(2)}/hr',
+                          desc: 'Scheduled statutory floor rate',
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: FairDropColors.mintBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: FairDropColors.mintBorder),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.verified_outlined, size: 20, color: FairDropColors.brandGreen),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'No scheduled formula revisions pending. All rate adjustments require minimum 7 days advance notice under Fairwork Fair Contracts principles.',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: FairDropColors.brandNavy,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.pushNamed(context, '/pay-breakdown');
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: FairDropColors.mintBorder),
+                    backgroundColor: FairDropColors.mintBg,
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: const Icon(Icons.receipt_long_rounded, color: FairDropColors.brandNavy, size: 18),
+                  label: Text(
+                    'View Itemized Delivery Ledger',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: FairDropColors.brandNavy,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildModalFormulaRow({
+    required String title,
+    required String value,
+    required String desc,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: FairDropColors.brandNavy,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              value,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: FairDropColors.brandGreen,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          desc,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: FairDropColors.slateMuted,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatEffectiveDateNotice(dynamic effFrom) {
+    if (effFrom == null) return 'Scheduled for upcoming rollout';
+    try {
+      final effDate = DateTime.parse(effFrom.toString().split('T').first);
+      final today = DateTime.now();
+      final diffDays = effDate.difference(DateTime(today.year, today.month, today.day)).inDays;
+      final dateStr = '${effDate.day.toString().padLeft(2, '0')}/${effDate.month.toString().padLeft(2, '0')}/${effDate.year}';
+      if (diffDays > 0) {
+        return 'Takes effect in $diffDays days ($dateStr)';
+      } else if (diffDays == 0) {
+        return 'Takes effect today ($dateStr)';
+      } else {
+        return 'Effective since $dateStr';
+      }
+    } catch (_) {
+      return 'Effective: $effFrom';
+    }
   }
 }

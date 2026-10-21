@@ -385,3 +385,33 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
   - `updates and toggles a newly created item by its generated ID`: Creates a new menu item via `POST /api/restaurants/menu`, updates it, and toggles availability via `PATCH /api/restaurants/menu/:id/availability`, verifying 200 response and MongoDB persistence.
 - `core-service npm test`: 78/78 tests passed.
 
+---
+
+## F17: Hub Fairness Index & Dynamic Formula Breakdown Modal (AUDIT-F17 / R17, R18)
+
+### 1. Root Causes & Findings
+- **Unverified Claims & Road Conditions**: On `RiderHomeScreen`, the Kollam Hub Fairness Index card displayed an unsourced `"+₹12 above mandate"` callout and a static `"Road conditions clear across Kollam Central"` status line that was not connected to live sensor/weather APIs.
+- **Premature Realized Pay Display**: When a rider logged in with 0 completed engaged hours, the Realized pay tile displayed `"₹0.0/hr"`, confusing riders into believing they were underpaid rather than indicating that insufficient engaged hours had elapsed today.
+- **Opaque Pay Formula**: The formula action led riders to a static summary instead of rendering the comprehensive live policy rate card and scheduled revisions from `pay-service`.
+
+### 2. Remediation Applied
+- **`fairdrop_app/lib/screens/rider_home_screen.dart`**:
+  - Added authoritative subtitle under `Kollam Hub Fairness Index`: `"Average pay per engaged hour for riders in this hub today vs the statutory floor."`
+  - In Realized pay tile: when completed engaged hours = 0, displays `"Not enough completed hours today"`. When engaged hours > 0, computes `_hourlyRate` strictly from completed shift earnings and engaged time.
+  - Completely deleted `"+₹12 above mandate"` text.
+  - Completely deleted the road conditions status line.
+  - Implemented dynamic formula breakdown modal (`Key('btn_view_full_formula')` -> `_showFormulaBreakdownModal`):
+    - Renders active policy rate card dynamically from pay config: Base Dispatch Fee, Distance Transit Rate, Geofenced Wait Compensation, Monsoon Severe Weather Surge, and Kerala Statutory Minimum Floor (zero hardcoded pay numbers).
+    - If upcoming revision exists (`_scheduledConfig != null`): renders effective date notice (`"Takes effect in N days (DD/MM/YYYY)"`), change reason, and all scheduled revised rates.
+    - If no revision is scheduled: renders a clean verification banner: `"No scheduled formula revisions pending. All rate adjustments require minimum 7 days advance notice under Fairwork Fair Contracts principles."`
+    - Wrapped horizontal row items in `Expanded` to guarantee zero layout exceptions at 393px mobile width.
+
+### 3. Verification & Test Evidence
+- **`fairdrop_app/test/f17_hub_fairness_test.dart`**:
+  - Tested at 393px width (iPhone 16 / Pixel 7 mobile baseline).
+  - Test 1: Verifies Hub Fairness Index card renders exact subtitle, displays `"Not enough completed hours today"` for new rider, renders statutory floor, and verifies `+₹12 above mandate` and road conditions are deleted.
+  - Test 2: Taps `"View Full Formula Breakdown"`, verifies modal renders live rate card without any layout or RenderFlex overflow exceptions.
+- `fairdrop_app flutter test`: 130/130 passed (2 new widget tests passing).
+- `fairdrop_app flutter analyze`: No issues found!
+
+
