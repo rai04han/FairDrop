@@ -38,6 +38,7 @@
 | **F25** | Analytics total earnings comparison; Actual Deliveries mode shows split (`order pay ₹Y + incentive ₹Z`) with Zomato ladder incentive (₹0 below 19 orders); remove ₹20/delivery cliff baseline; Scenario chart y-axis = cumulative total earnings ($n \times \text{average order pay} + \text{incentive}$), stating rider's real average or config base+2km rate; parity table with 27-order equality, per-order incentive keeps paying beyond 27 orders, removed 'capped at 27' wording (R20) | **FIXED** | `25a7130` | `pay-service/src/routes/payRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 33/33 passed;<br>`flutter analyze`: 0 issues;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Removed ₹20/delivery cliff baseline and 'capped at 27' wording |
 | **F26** | Remove app fallback sample (`ORD-20261019-0001` with `CACHED` badge); show "No completed deliveries yet" on empty deliveries; update `seed.js` to guarantee demo rider has zero history and add second empty rider account `rider_new@fairdrop.in` (R21) | **FIXED** | `271ac9a` | `fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/test/pay_breakdown_test.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`scripts/seed.js`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/pay_breakdown_test.dart`: 5/5 passed;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>**Source Report**: Client app fallback in `pay_breakdown_screen.dart` lines 38, 86, 106–120 |
 | **F27** | Format engaged time under 1h as 'X min active' (never '0.0 hrs'); gate average hourly rate to ' — ' with 'after N engaged min' (N = floor window) until evaluated; subtitle 'Floor evaluated after N min on orders'; status badge 'Not yet evaluated'; scale statutory floor by windowMinutes / 60 on window override (R23, R24) | **FIXED** | `efd9454` | `pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/lib/screens/profile_screen.dart`<br>`fairdrop_app/test/pay_breakdown_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 35/35 passed (2 new unit tests);<br>`flutter analyze`: 0 issues;<br>`flutter test test/pay_breakdown_test.dart`: 6/6 passed;<br>Zero 393px layout overflow exceptions |
+| **F28** | Admin Screen: add Logout button to AppBar with confirm dialog clearing token & returning to login; fix invisible title (navy text on navy bg -> white text style); update revision text to cite Fairwork Principle 3 (Fair Contracts) instead of non-existent P6 (R22) | **FIXED** | Pending commit | `fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/test/admin_panel_test.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/admin_panel_test.dart`: 6/6 passed |
 
 ---
 
@@ -808,6 +809,35 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - Mobile viewport: Zero RenderFlex layout exceptions at 393px.
 
 ---
+
+---
+
+## F28 (R22): Admin Panel AppBar Visibility, Logout Flow & Fairwork Principle 3
+
+### 1. Root Causes & Findings
+- **Invisible Header Title (Empty Navy Block)**: The global theme in `lib/config/theme.dart` defined `appBarTheme: titleTextStyle: color: FairDropColors.brandNavy`. In Flutter Material 3, the theme's title text style took precedence over `foregroundColor: Colors.white`. Because `AdminPanelScreen` used `backgroundColor: FairDropColors.brandNavy`, the title was rendered in Navy on Navy, appearing as an empty navy block.
+- **Missing Logout Button**: Administrators had no mechanism on the Admin Panel screen to log out or switch accounts without manually clearing browser application cache.
+- **Erroneous Fairwork P6 Citation**: The revision diff dialog and form helper text cited "Fairwork P6". Fairwork has only five core principles:
+  1. Fair Pay
+  2. Fair Conditions
+  3. Fair Contracts
+  4. Fair Management
+  5. Fair Representation
+  Statutory 7-day advance notice and recorded change reasons fall strictly under Fairwork Principle 3 (Fair Contracts), identical to the citation in `profile_screen.dart`.
+
+### 2. Remediation Applied
+- **`fairdrop_app/lib/screens/admin_panel_screen.dart`**:
+  - Configured explicit white title text style in `AppBar`: `style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)`, `iconTheme: const IconThemeData(color: Colors.white)`, and `actionsIconTheme: const IconThemeData(color: Colors.white)`.
+  - Added Logout `IconButton` (`Key('btn_admin_logout')`, `Icons.logout_rounded`) to the AppBar actions.
+  - Implemented `_logout()` displaying an `AlertDialog` confirmation ("Are you sure you want to log out of Admin Panel?"). Confirming calls `CoreApiService.logout()` to delete auth tokens and navigates to `/login` via `pushNamedAndRemoveUntil`.
+  - Replaced all "Fairwork P6" citations with "Fairwork Principle 3 (Fair Contracts)".
+- **`fairdrop_app/test/admin_panel_test.dart`**:
+  - Updated diff comparison modal test to assert `Fairwork Principle 3 Compliant`.
+  - Added dedicated widget test verifying title rendering in white, presence of reload and logout buttons, and confirm dialog behavior.
+
+### 3. Verification & Test Evidence
+- `fairdrop_app flutter analyze`: No issues found.
+- `fairdrop_app flutter test test/admin_panel_test.dart`: 6/6 passed.
 
 ## 4. Final Verification Gate Summary (Part A + Part B)
 

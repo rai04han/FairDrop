@@ -7,11 +7,13 @@
 //               FR-43 (Client-side Numeric Validation),
 //               FR-44 (Old → New Diff Comparison Confirmation Dialog),
 //               FR-45 (Audit Trail & Status Refresh)
-// Fairwork Principles: Fair Contracts P6 (7-day advance notice & recorded reasons),
+// Fairwork Principles: Fair Contracts P3 (7-day advance notice & recorded reasons),
 //                      Fair Pay P1 & P2 (Living wage floor & transparent rates)
 // ============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../services/core_api_service.dart';
 import '../config/theme.dart';
 import '../services/api_service.dart';
 
@@ -244,7 +246,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '7-Day Advance Notice: $noticeDays days scheduled (Fairwork P6 Compliant)',
+                          '7-Day Advance Notice: $noticeDays days scheduled (Fairwork Principle 3 Compliant)',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -443,6 +445,46 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     }
   }
 
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Log Out',
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'Are you sure you want to log out of Admin Panel?',
+          style: GoogleFonts.plusJakartaSans(),
+        ),
+        actions: [
+          TextButton(
+            key: const Key('btn_cancel_admin_logout'),
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(minimumSize: Size.zero),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('btn_confirm_admin_logout'),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              minimumSize: Size.zero,
+              backgroundColor: FairDropColors.errorRed,
+            ),
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await CoreApiService.logout();
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+      }
+    }
+  }
+
   // ── Main Build Method ───────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -451,14 +493,23 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text('Admin Panel — Pay Governance'),
+        title: Text('Admin Panel — Pay Governance', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
         backgroundColor: FairDropColors.brandNavy,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            key: const Key('btn_reload_admin_config'),
             icon: const Icon(Icons.refresh),
             tooltip: 'Reload configs',
             onPressed: _isLoading ? null : _loadData,
+          ),
+          IconButton(
+            key: const Key('btn_admin_logout'),
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Log out',
+            onPressed: _logout,
           ),
         ],
       ),
@@ -648,7 +699,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Per Fairwork P6, revisions require a documented reason and at least 7 days advance notice.',
+                'Per Fairwork Principle 3 (Fair Contracts), revisions require a documented reason and at least 7 days advance notice.',
                 style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
               const Divider(height: 24),
@@ -776,7 +827,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   hintText: 'e.g. Annual inflation wage adjustment under Kerala Gig Policy',
                   prefixIcon: Icon(Icons.rate_review),
                   border: OutlineInputBorder(),
-                  helperText: 'Recorded in audit trail (Fairwork P6)',
+                  helperText: 'Recorded in audit trail (Fairwork Principle 3)',
                 ),
                 validator: (val) {
                   if (val == null || val.trim().isEmpty) {

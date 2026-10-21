@@ -194,7 +194,7 @@ void main() {
     });
 
     // ── Test 4: Old → New Diff Confirmation Dialog (FR-44) ───────────────────
-    testWidgets('Displays Old → New Diff comparison modal with Fairwork P6 notice (FR-44)', (tester) async {
+    testWidgets('Displays Old → New Diff comparison modal with Fairwork Principle 3 notice (FR-44)', (tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -227,7 +227,7 @@ void main() {
       // Verify diff dialog opens
       expect(find.byKey(const Key('admin_diff_dialog')), findsOneWidget);
       expect(find.text('Confirm Pay Structure Revision'), findsOneWidget);
-      expect(find.textContaining('Fairwork P6 Compliant'), findsOneWidget);
+      expect(find.textContaining('Fairwork Principle 3 Compliant'), findsOneWidget);
 
       // Verify changed items have 'CHANGED' chips and unchanged have 'Same' chips
       expect(find.text('CHANGED'), findsNWidgets(2)); // Base Rate & Wait Threshold changed
@@ -307,5 +307,44 @@ void main() {
       expect(find.textContaining('Pay configuration revision successfully scheduled!'), findsOneWidget);
       expect(find.textContaining('Kerala minimum wage revision 2026'), findsNothing); // field was cleared
     });
+
+    testWidgets('AppBar shows visible title, reload button, and logout button with confirm dialog (F28 / R22)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          routes: {
+            '/login': (context) => const Scaffold(body: Text('Login Screen')),
+          },
+          home: AdminPanelScreen(
+            initialConfig: sampleActiveConfig,
+            initialHistory: sampleHistory,
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify title is rendered with white text style
+      final titleWidget = tester.widget<Text>(find.text('Admin Panel — Pay Governance'));
+      expect(titleWidget.style?.color, Colors.white);
+
+      // Verify buttons exist
+      expect(find.byKey(const Key('btn_reload_admin_config')), findsOneWidget);
+      expect(find.byKey(const Key('btn_admin_logout')), findsOneWidget);
+
+      // Tap logout button to open confirmation dialog
+      await tester.tap(find.byKey(const Key('btn_admin_logout')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Log Out'), findsWidgets);
+      expect(find.text('Are you sure you want to log out of Admin Panel?'), findsOneWidget);
+      expect(find.byKey(const Key('btn_cancel_admin_logout')), findsOneWidget);
+      expect(find.byKey(const Key('btn_confirm_admin_logout')), findsOneWidget);
+
+      // Tap Cancel dismisses dialog
+      await tester.tap(find.byKey(const Key('btn_cancel_admin_logout')));
+      await tester.pumpAndSettle();
+      expect(find.text('Are you sure you want to log out of Admin Panel?'), findsNothing);
+    });
   });
 }
+
