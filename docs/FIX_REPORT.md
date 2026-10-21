@@ -34,7 +34,8 @@
 | **F21** | Analytics wording follow-up: explicit cost-neutrality at top Zomato tier (27 orders) and platform extra cost capped at 27 orders; parity summary & policy notes updated; 393px layout fix (R6) | **FIXED** | `b12ae8a` | `fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: No issues found;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Dedicated 393px mobile width test passing with 0 layout exceptions |
 | **F22** | Canonical delay flow enums (`traffic`, `weather`, `restaurant`, `customer`, `other`; `rider_report`, `ops_dispatch`, `system_detection`) and delivery failure rollback to `picked_up` (FR-19, FR-20, FR-24) | **FIXED** | `c645d26` | `core-service/src/modules/orders/order.controller.js`<br>`core-service/src/modules/orders/order.model.js`<br>`core-service/tests/orders.test.js`<br>`pay-service/src/services/payEngine.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart` | `core-service npm test`: passed;<br>`pay-service npm test`: passed;<br>Simulated pay failure maintains order at picked_up; retry succeeds |
 | **F23** | Support string menu item IDs (`item-101`, `item-102`, `item-103`) in core-service schemas, seed, and availability toggles (FR-63, FR-64) | **FIXED** | `8a67564` | `core-service/src/modules/restaurants/restaurant.model.js`<br>`core-service/src/modules/restaurants/restaurant.controller.js`<br>`core-service/tests/restaurants.test.js`<br>`scripts/seed.js` | `core-service npm test`: 78/78 passed;<br>Both seeded and newly created menu items toggle availability by string ID |
-| **F24** | FairDrop per-order incentive (`incentive_per_order` default 17.04); 7-line ledger (Base, Distance, Surge, Wait, FairDrop Incentive, Total Delivery Pay, Effective Hourly Rate); updated Shift card, Offer card (+₹17.04 FairDrop incentive), Acceptance screen, Active meter, Dashboard, and Admin Active Config; rename payout labels to Estimated (R20) | **FIXED** | Pending commit | `database/mysql/schema.sql`<br>`scripts/seed.js`<br>`pay-service/src/payEngine.js`<br>`pay-service/src/routes/payRoutes.js`<br>`pay-service/src/routes/adminRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`core-service/src/modules/riders/rider.controller.js`<br>`docs/FairDrop_Flutter_App_PRD_v2.1.md`<br>`fairdrop_app/lib/models/pay_result.dart`<br>`fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/order_acceptance_screen.dart`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/test/admin_panel_test.dart`<br>`fairdrop_app/test/f16_floor_redesign_test.dart`<br>`fairdrop_app/test/order_acceptance_test.dart` | `pay-service npm test`: 33/33 passed;<br>`core-service npm test`: 78/78 passed;<br>`flutter test`: 135/135 passed;<br>`flutter analyze`: 0 issues;<br>**Assumption**: Floor top-up still compares block pay to the floor, with total pay now including the incentive. |
+| **F24** | FairDrop per-order incentive (`incentive_per_order` default 17.04); 7-line ledger (Base, Distance, Surge, Wait, FairDrop Incentive, Total Delivery Pay, Effective Hourly Rate); updated Shift card, Offer card (+₹17.04 FairDrop incentive), Acceptance screen, Active meter, Dashboard, and Admin Active Config; rename payout labels to Estimated (R20) | **FIXED** | `ed1ee0d` | `database/mysql/schema.sql`<br>`scripts/seed.js`<br>`pay-service/src/payEngine.js`<br>`pay-service/src/routes/payRoutes.js`<br>`pay-service/src/routes/adminRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`core-service/src/modules/riders/rider.controller.js`<br>`docs/FairDrop_Flutter_App_PRD_v2.1.md`<br>`fairdrop_app/lib/models/pay_result.dart`<br>`fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/order_acceptance_screen.dart`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/test/admin_panel_test.dart`<br>`fairdrop_app/test/f16_floor_redesign_test.dart`<br>`fairdrop_app/test/order_acceptance_test.dart` | `pay-service npm test`: 33/33 passed;<br>`core-service npm test`: 78/78 passed;<br>`flutter test`: 135/135 passed;<br>`flutter analyze`: 0 issues;<br>**Assumption**: Floor top-up still compares block pay to the floor, with total pay now including the incentive. |
+| **F25** | Analytics total earnings comparison; Actual Deliveries mode shows split (`order pay ₹Y + incentive ₹Z`) with Zomato ladder incentive (₹0 below 19 orders); remove ₹20/delivery cliff baseline; Scenario chart y-axis = cumulative total earnings ($n \times \text{average order pay} + \text{incentive}$), stating rider's real average or config base+2km rate; parity table with 27-order equality, per-order incentive keeps paying beyond 27 orders, removed 'capped at 27' wording (R20) | **FIXED** | Pending commit | `pay-service/src/routes/payRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 33/33 passed;<br>`flutter analyze`: 0 issues;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Removed ₹20/delivery cliff baseline and 'capped at 27' wording |
 
 ---
 
@@ -702,6 +703,39 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `core-service npm test`: 78/78 passed.
 - `fairdrop_app flutter test`: 135/135 passed (including 393px width tests in `f16_floor_redesign_test.dart`).
 - `fairdrop_app flutter analyze`: No issues found.
+
+---
+
+## F25 (R20 Analytics): Compare Total Earnings & Remove Cliff Baseline
+
+### 1. Root Causes & Findings
+- **Obsolete Cliff Baseline**: `payRoutes.js` previously calculated benchmark pay as `deliveryIndex * 20 + bonus`, yielding "Zomato ₹40 over 2 deliveries" and asserting an artificial ₹20/delivery cliff rate.
+- **Incentive-Only vs Total Earnings**: The PRD and analytics screens previously compared only daily incentives rather than total shift earnings (order pay + incentive), obscuring the true comparative payout.
+- **Scenario Chart & Capped Wording**: The scenario chart y-axis only plotted daily incentive; policy notes stated platform extra cost was "capped at 27 orders", whereas linear incentive continues paying ₹17.04 per order beyond 27 orders.
+
+### 2. Remediation Applied
+- **`pay-service/src/routes/payRoutes.js`**:
+  - Replaced ₹20/delivery cliff baseline in `GET /api/pay/analytics/:rider_id` with total earnings comparison: FairDrop total = real order pay + FairDrop incentive (`fairdrop_incentive_total`).
+  - Implemented `getZomatoLadderIncentive`: ₹0 below 19 orders; 19 = ₹306, 23 = ₹383, 25 = ₹434, 27 = ₹510. Zomato total = identical real order pay + ladder incentive.
+  - Returned breakdown fields: `order_pay_total`, `fairdrop_incentive_total`, `fairdrop_total`, `zomato_incentive_total`, and `zomato_total`.
+- **`pay-service/tests/payEngine.test.js`**:
+  - Updated analytics tests to assert total earnings comparison (`order_pay_total: 39`, `fairdrop_total: 56.04`, `zomato_total: 39` with ₹0 ladder incentive below 19 orders).
+- **`fairdrop_app/lib/screens/analytics_screen.dart`**:
+  - Actual Deliveries cards show Total Earnings with explicit split: `order pay ₹Y + incentive ₹Z`.
+  - Renamed card labels to "FairDrop Total" and "Zomato Total".
+  - Scenario chart: y-axis plots cumulative total earnings ($n \times \text{average order pay} + \text{incentive}$), scaling up to ₹1600.
+  - Explicitly states average order pay assumption on screen (rider's real average or config base ₹15 + 2 km × ₹6/km = ₹27.00).
+  - Maintained interactive peak window toggle (+₹50 bonus).
+  - Preserved parity table with 27-order equality; removed any "capped at 27" wording.
+- **`fairdrop_app/lib/utils/incentive_analytics.dart`**:
+  - Updated `noteCostNeutrality`: "Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders. Per-order incentive keeps paying beyond 27 orders."
+- **`fairdrop_app/test/analytics_dashboard_test.dart`**:
+  - Updated assertions to verify cost-neutrality note and absence of "capped at 27".
+
+### 3. Verification & Test Evidence
+- `pay-service npm test`: 33/33 passed.
+- `fairdrop_app flutter analyze`: No issues found.
+- `fairdrop_app flutter test test/analytics_dashboard_test.dart`: 11/11 passed (including 393px mobile test).
 
 ---
 

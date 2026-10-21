@@ -365,9 +365,10 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(
-        find.textContaining('Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders, with per-order extra capped at 27 orders.'),
+        find.textContaining('Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders. Per-order incentive keeps paying beyond 27 orders.'),
         findsWidgets,
       );
+      expect(find.textContaining('capped at 27'), findsNothing);
     });
   });
 }

@@ -56,6 +56,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   int _actualDeliveriesToday = 0;
   double _fairDropTotal = 0.0;
   double _benchmarkTotal = 0.0;
+  double _orderPayTotal = 0.0;
+  double _fairDropIncentiveTotal = 0.0;
+  double _zomatoIncentiveTotal = 0.0;
+  double _averageOrderPay = 27.0; // Fallback: base 15 + 2km * 6 = 27.0
+  bool _hasRealAverage = false;
 
   @override
   void initState() {
@@ -76,10 +81,38 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     setState(() {
       final actualComparison = (data['actual_comparison'] as Map<String, dynamic>?) ?? {};
       _actualDeliveriesToday = (actualComparison['total_deliveries'] as num?)?.toInt() ?? 0;
-      _fairDropTotal = (actualComparison['fairdrop_total'] as num?)?.toDouble() ??
-          IncentiveAnalytics.getFairDropIncentive(_actualDeliveriesToday, includePeak: _includePeakBonus);
-      _benchmarkTotal = (actualComparison['cliff_total'] as num?)?.toDouble() ??
-          IncentiveAnalytics.getZomatoIncentive(_actualDeliveriesToday);
+
+      if (_actualDeliveriesToday > 0) {
+        if (actualComparison.containsKey('order_pay_total')) {
+          _orderPayTotal = (actualComparison['order_pay_total'] as num?)?.toDouble() ?? 0.0;
+          _fairDropIncentiveTotal = (actualComparison['fairdrop_incentive_total'] as num?)?.toDouble() ??
+              (_actualDeliveriesToday * IncentiveAnalytics.defaultRatePerOrder);
+          _zomatoIncentiveTotal = (actualComparison['zomato_incentive_total'] as num?)?.toDouble() ??
+              IncentiveAnalytics.getZomatoIncentive(_actualDeliveriesToday);
+          _fairDropTotal = (actualComparison['fairdrop_total'] as num?)?.toDouble() ??
+              (_orderPayTotal + _fairDropIncentiveTotal);
+          _benchmarkTotal = (actualComparison['zomato_total'] ?? actualComparison['cliff_total'] as num?)?.toDouble() ??
+              (_orderPayTotal + _zomatoIncentiveTotal);
+          _averageOrderPay = _actualDeliveriesToday > 0 ? (_orderPayTotal / _actualDeliveriesToday) : 27.0;
+          _hasRealAverage = true;
+        } else {
+          _averageOrderPay = 27.0;
+          _hasRealAverage = false;
+          _orderPayTotal = _actualDeliveriesToday * _averageOrderPay;
+          _fairDropIncentiveTotal = _actualDeliveriesToday * IncentiveAnalytics.defaultRatePerOrder;
+          _zomatoIncentiveTotal = IncentiveAnalytics.getZomatoIncentive(_actualDeliveriesToday);
+          _fairDropTotal = _orderPayTotal + _fairDropIncentiveTotal;
+          _benchmarkTotal = _orderPayTotal + _zomatoIncentiveTotal;
+        }
+      } else {
+        _orderPayTotal = 0.0;
+        _fairDropIncentiveTotal = 0.0;
+        _zomatoIncentiveTotal = 0.0;
+        _fairDropTotal = 0.0;
+        _benchmarkTotal = 0.0;
+        _averageOrderPay = 27.0;
+        _hasRealAverage = false;
+      }
       _isLoading = false;
       _errorMessage = null;
     });
@@ -105,10 +138,29 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         final stats = statsData['stats'] as Map<String, dynamic>? ?? {};
         if (mounted) {
           final count = (stats['deliveries_today'] as num?)?.toInt() ?? 0;
+          final todayGrossPay = (stats['gross_pay_today'] as num?)?.toDouble() ?? 0.0;
+          final incentivePay = (stats['fairdrop_incentive_today'] ?? stats['incentive_pay_today'] as num?)?.toDouble() ??
+              (count * IncentiveAnalytics.defaultRatePerOrder);
+          final orderPay = count > 0 ? (todayGrossPay - incentivePay) : 0.0;
           setState(() {
             _actualDeliveriesToday = count;
-            _fairDropTotal = IncentiveAnalytics.getFairDropIncentive(count, includePeak: _includePeakBonus);
-            _benchmarkTotal = IncentiveAnalytics.getZomatoIncentive(count);
+            if (count > 0) {
+              _orderPayTotal = orderPay > 0 ? orderPay : count * 27.0;
+              _fairDropIncentiveTotal = incentivePay;
+              _zomatoIncentiveTotal = IncentiveAnalytics.getZomatoIncentive(count);
+              _fairDropTotal = _orderPayTotal + _fairDropIncentiveTotal;
+              _benchmarkTotal = _orderPayTotal + _zomatoIncentiveTotal;
+              _averageOrderPay = _orderPayTotal / count;
+              _hasRealAverage = true;
+            } else {
+              _orderPayTotal = 0.0;
+              _fairDropIncentiveTotal = 0.0;
+              _zomatoIncentiveTotal = 0.0;
+              _fairDropTotal = 0.0;
+              _benchmarkTotal = 0.0;
+              _averageOrderPay = 27.0;
+              _hasRealAverage = false;
+            }
             _isLoading = false;
             _errorMessage = null;
           });
@@ -292,12 +344,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   // ── Comparison Metric Cards ───────────────────────────────────────────────
   Widget _buildMetricCards() {
-    final fairDropAt27 = IncentiveAnalytics.getFairDropIncentive(27, includePeak: true);
-    final zomatoAt27 = IncentiveAnalytics.getZomatoIncentive(27);
+    final zomatoIncentiveAt27 = IncentiveAnalytics.getZomatoIncentive(27);
+    final fairDropIncentiveAt27 = IncentiveAnalytics.getFairDropIncentive(27, includePeak: true);
+    final zomatoAt27 = 27 * _averageOrderPay + zomatoIncentiveAt27;
+    final fairDropAt27 = 27 * _averageOrderPay + fairDropIncentiveAt27;
 
     return Row(
       children: [
-        // FairDrop Incentive Card
+        // FairDrop Total Card
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(14),
@@ -323,7 +377,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'FairDrop Incentive',
+                        'FairDrop Total',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -345,9 +399,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ),
                 ),
                 Text(
-                  'Over $_actualDeliveriesToday deliveries',
+                  'order pay ₹${_orderPayTotal.toStringAsFixed(2)} + incentive ₹${_fairDropIncentiveTotal.toStringAsFixed(2)}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: FairDropColors.slateMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Over $_actualDeliveriesToday deliveries',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10,
                     color: FairDropColors.slateMuted,
                   ),
                 ),
@@ -383,7 +446,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'Zomato Ladder',
+                        'Zomato Total',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -405,9 +468,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ),
                 ),
                 Text(
-                  'Equal pay at 27 orders (₹${zomatoAt27.toInt()} vs ₹${fairDropAt27.toInt()})',
+                  'order pay ₹${_orderPayTotal.toStringAsFixed(2)} + incentive ₹${_zomatoIncentiveTotal.toStringAsFixed(2)}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: FairDropColors.slateMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Equal pay at 27 orders (₹${zomatoAt27.toInt()} vs ₹${fairDropAt27.toInt()})',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: FairDropColors.brandNavy,
                   ),
@@ -465,10 +537,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             onChanged: (val) {
               setState(() {
                 _includePeakBonus = val;
-                _fairDropTotal = IncentiveAnalytics.getFairDropIncentive(
-                  _actualDeliveriesToday,
-                  includePeak: _includePeakBonus,
-                );
               });
             },
           ),
@@ -484,14 +552,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final List<FlSpot> fairDropNoPeakSpots = [];
 
     for (int n = 0; n <= 30; n++) {
-      zomatoSpots.add(FlSpot(n.toDouble(), IncentiveAnalytics.getZomatoIncentive(n)));
+      final orderPay = n * _averageOrderPay;
+      zomatoSpots.add(FlSpot(n.toDouble(), orderPay + IncentiveAnalytics.getZomatoIncentive(n)));
       fairDropWithPeakSpots.add(
-        FlSpot(n.toDouble(), IncentiveAnalytics.getFairDropIncentive(n, includePeak: true)),
+        FlSpot(n.toDouble(), orderPay + IncentiveAnalytics.getFairDropIncentive(n, includePeak: true)),
       );
       fairDropNoPeakSpots.add(
-        FlSpot(n.toDouble(), IncentiveAnalytics.getFairDropIncentive(n, includePeak: false)),
+        FlSpot(n.toDouble(), orderPay + IncentiveAnalytics.getFairDropIncentive(n, includePeak: false)),
       );
     }
+
+    final assumptionText = _hasRealAverage
+        ? "Assumes average order pay of ₹${_averageOrderPay.toStringAsFixed(2)} / delivery (rider's real average)"
+        : 'Assumes average order pay of ₹27.00 / delivery (config base ₹15 + 2 km × ₹6/km)';
 
     return Container(
       key: const Key('pay_analytics_chart_container'),
@@ -510,7 +583,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             children: [
               Expanded(
                 child: Text(
-                  'Cumulative Daily Incentive vs Orders (0–30)',
+                  'Cumulative Total Earnings vs Orders (0–30)',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -537,13 +610,38 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Compares linear FairDrop policy against illustrative Zomato ladder steps',
+            'y-axis = cumulative total earnings (n × average order pay + incentive)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
               color: FairDropColors.slateMuted,
             ),
           ),
-          const Divider(height: 24),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: FairDropColors.surfaceLow,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: FairDropColors.mintBorder.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, size: 14, color: FairDropColors.slateMuted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    assumptionText,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: FairDropColors.brandNavy,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 20),
 
           // Chart Legend
           Wrap(
@@ -565,11 +663,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 minX: 0,
                 maxX: 30,
                 minY: 0,
-                maxY: 600,
+                maxY: 1600,
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  horizontalInterval: 100,
+                  horizontalInterval: 200,
                   getDrawingHorizontalLine: (value) => FlLine(
                     color: FairDropColors.mintBorder.withValues(alpha: 0.5),
                     strokeWidth: 1,
@@ -611,8 +709,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 42,
-                      interval: 100,
+                      reservedSize: 46,
+                      interval: 200,
                       getTitlesWidget: (val, meta) {
                         return Text(
                           '₹${val.toInt()}',
@@ -642,11 +740,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     spots: fairDropWithPeakSpots,
                     isCurved: false,
                     color: FairDropColors.brandGreen,
-                    barWidth: 3.5,
+                    barWidth: _includePeakBonus ? 3.5 : 2.0,
                     isStrokeCapRound: true,
                     dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
-                      show: true,
+                      show: _includePeakBonus,
                       color: FairDropColors.brandGreen.withValues(alpha: 0.08),
                     ),
                   ),
@@ -655,7 +753,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     spots: fairDropNoPeakSpots,
                     isCurved: false,
                     color: const Color(0xFF0D9488),
-                    barWidth: 2.5,
+                    barWidth: !_includePeakBonus ? 3.5 : 2.5,
                     dashArray: [5, 5],
                     isStrokeCapRound: true,
                     dotData: const FlDotData(show: false),
@@ -817,7 +915,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders, with per-order extra capped at 27 orders.',
+                        'Cost-neutral at the top Zomato tier (27 orders); extra platform cost below 27 orders. Per-order incentive keeps paying beyond 27 orders.',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -900,6 +998,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              _buildAssumptionChip('Average Order Pay', _hasRealAverage ? '₹${_averageOrderPay.toStringAsFixed(2)} (rider avg)' : '₹27.00 (config base + 2km)'),
               _buildAssumptionChip('Benchmark Model', 'Zomato Ladder (28 Jun)'),
               _buildAssumptionChip('FairDrop Linear Rate', '₹17.04 / order'),
               _buildAssumptionChip('Peak Windows Bonus', '₹25 × 2 = ₹50'),

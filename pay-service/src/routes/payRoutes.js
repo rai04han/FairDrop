@@ -490,13 +490,27 @@ router.get('/analytics/:rider_id', async (req, res) => {
       [rider_id]
     );
 
-    // ── 1. Cliff Model Assumptions (FR-35) ──────────────────────────────
+    // ── Helper: Zomato ladder incentive (FR-34, FR-35) ─────────────────
+    function getZomatoLadderIncentive(n) {
+      if (n >= 27) return 510.0;
+      if (n >= 25) return 434.0;
+      if (n >= 23) return 383.0;
+      if (n >= 19) return 306.0;
+      return 0.0;
+    }
+
+    // ── 1. Ladder Model Assumptions (FR-35) ──────────────────────────────
     const assumptions = {
-      cliff_threshold_deliveries: 10,
-      cliff_base_per_delivery: 20,
-      cliff_bonus: 500,
+      benchmark_model: 'Zomato illustrative ladder benchmark (28 Jun)',
+      ladder_steps: { 19: 306, 23: 383, 25: 434, 27: 510 },
+      rate_per_order: 17.04,
+      peak_bonus: 50.0,
       description:
-        'Industry standard cliff-bonus model: ₹20 base pay per delivery with a ₹500 flat bonus upon reaching exactly 10 deliveries. Zero bonus for deliveries 1–9. No distance pay, no wait compensation, no hourly floor.',
+        'Base and distance pay are identical on both platforms; this analysis compares daily incentives and total earnings. FairDrop pays a linear incentive of ₹17.04 per order. Zomato pays tiered target incentives starting at 19 orders (₹0 below 19 orders).',
+      // Legacy compatibility
+      cliff_threshold_deliveries: 10,
+      cliff_base_per_delivery: 0,
+      cliff_bonus: 500,
     };
 
     // ── 2. Actual Deliveries Comparison (FR-34) ─────────────────────────
@@ -507,6 +521,7 @@ router.get('/analytics/:rider_id', async (req, res) => {
          e.distance_pay,
          e.surge_bonus,
          e.wait_compensation,
+         e.fairdrop_incentive,
          e.total_delivery_pay,
          e.floor_topup,
          e.hourly_earnings_so_far,
@@ -521,40 +536,52 @@ router.get('/analytics/:rider_id', async (req, res) => {
       [rider_id]
     );
 
-    let cumulativeFairdrop = 0;
+    let cumulativeOrderPay = 0;
+    let cumulativeFairdropIncentive = 0;
     const actualDataPoints = [];
 
     for (let i = 0; i < rows.length; i++) {
       const deliveryIndex = i + 1;
       const r = rows[i];
-      const deliveryPay = parseFloat(r.total_delivery_pay) + parseFloat(r.floor_topup);
-      cumulativeFairdrop += deliveryPay;
+      const fairdropIncentive = parseFloat(r.fairdrop_incentive != null ? r.fairdrop_incentive : 17.04);
+      const orderPay = parseFloat(r.total_delivery_pay) - fairdropIncentive;
+      cumulativeOrderPay += orderPay;
+      cumulativeFairdropIncentive += fairdropIncentive;
 
-      const cliffPay =
-        deliveryIndex * assumptions.cliff_base_per_delivery +
-        (deliveryIndex >= assumptions.cliff_threshold_deliveries ? assumptions.cliff_bonus : 0);
+      const zomatoIncentive = getZomatoLadderIncentive(deliveryIndex);
+      const fairdropTotalAtStep = cumulativeOrderPay + cumulativeFairdropIncentive;
+      const zomatoTotalAtStep = cumulativeOrderPay + zomatoIncentive;
 
       actualDataPoints.push({
         delivery_index: deliveryIndex,
         order_id: r.order_id,
-        fairdrop_delivery_pay: parseFloat(deliveryPay.toFixed(2)),
-        fairdrop_cumulative: parseFloat(cumulativeFairdrop.toFixed(2)),
-        cliff_cumulative: parseFloat(cliffPay.toFixed(2)),
-        difference: parseFloat((cumulativeFairdrop - cliffPay).toFixed(2)),
+        order_pay: parseFloat(orderPay.toFixed(2)),
+        cumulative_order_pay: parseFloat(cumulativeOrderPay.toFixed(2)),
+        fairdrop_incentive: parseFloat(fairdropIncentive.toFixed(2)),
+        fairdrop_cumulative: parseFloat(fairdropTotalAtStep.toFixed(2)),
+        zomato_incentive: parseFloat(zomatoIncentive.toFixed(2)),
+        zomato_cumulative: parseFloat(zomatoTotalAtStep.toFixed(2)),
+        cliff_cumulative: parseFloat(zomatoTotalAtStep.toFixed(2)), // legacy compatibility
+        difference: parseFloat((fairdropTotalAtStep - zomatoTotalAtStep).toFixed(2)),
       });
     }
 
     const totalDeliveries = rows.length;
-    const totalFairdrop = cumulativeFairdrop;
-    const totalCliff =
-      totalDeliveries * assumptions.cliff_base_per_delivery +
-      (totalDeliveries >= assumptions.cliff_threshold_deliveries ? assumptions.cliff_bonus : 0);
+    const totalOrderPay = cumulativeOrderPay;
+    const totalFairdropIncentive = cumulativeFairdropIncentive;
+    const totalFairdrop = totalOrderPay + totalFairdropIncentive;
+    const totalZomatoIncentive = getZomatoLadderIncentive(totalDeliveries);
+    const totalZomato = totalOrderPay + totalZomatoIncentive;
 
     const actualComparison = {
       total_deliveries: totalDeliveries,
+      order_pay_total: parseFloat(totalOrderPay.toFixed(2)),
+      fairdrop_incentive_total: parseFloat(totalFairdropIncentive.toFixed(2)),
       fairdrop_total: parseFloat(totalFairdrop.toFixed(2)),
-      cliff_total: parseFloat(totalCliff.toFixed(2)),
-      fairdrop_advantage: parseFloat((totalFairdrop - totalCliff).toFixed(2)),
+      zomato_incentive_total: parseFloat(totalZomatoIncentive.toFixed(2)),
+      zomato_total: parseFloat(totalZomato.toFixed(2)),
+      cliff_total: parseFloat(totalZomato.toFixed(2)), // legacy compatibility
+      fairdrop_advantage: parseFloat((totalFairdrop - totalZomato).toFixed(2)),
       data_points: actualDataPoints,
     };
 

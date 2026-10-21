@@ -476,15 +476,18 @@ describe('GET /api/pay/analytics/:rider_id (FR-34 to FR-36)', () => {
 
     // FR-35: Assumptions stated
     assert.ok(data.assumptions);
-    assert.strictEqual(data.assumptions.cliff_threshold_deliveries, 10);
-    assert.strictEqual(data.assumptions.cliff_base_per_delivery, 20);
-    assert.strictEqual(data.assumptions.cliff_bonus, 500);
+    assert.strictEqual(data.assumptions.rate_per_order, 17.04);
+    assert.strictEqual(data.assumptions.peak_bonus, 50.0);
 
-    // FR-34: Actual comparison
+    // FR-34: Actual comparison (total earnings: order pay + incentive)
     assert.ok(data.actual_comparison);
     assert.strictEqual(data.actual_comparison.total_deliveries, 1);
-    assert.ok(data.actual_comparison.fairdrop_total > 0);
-    assert.strictEqual(data.actual_comparison.cliff_total, 20); // 1 delivery * ₹20
+    assert.strictEqual(data.actual_comparison.order_pay_total, 39);
+    assert.strictEqual(data.actual_comparison.fairdrop_incentive_total, 17.04);
+    assert.strictEqual(data.actual_comparison.fairdrop_total, 56.04);
+    assert.strictEqual(data.actual_comparison.zomato_incentive_total, 0); // 0 below 19 orders
+    assert.strictEqual(data.actual_comparison.zomato_total, 39); // order pay 39 + 0 incentive
+    assert.strictEqual(data.actual_comparison.cliff_total, 39); // legacy alias
     assert.ok(Array.isArray(data.actual_comparison.data_points));
     assert.strictEqual(data.actual_comparison.data_points.length, 1);
 
