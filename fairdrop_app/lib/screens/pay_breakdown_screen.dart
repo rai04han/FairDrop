@@ -38,6 +38,9 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
   int _floorWindowMinutes = 60;
   bool _hasEvaluatedBlock = false;
 
+  bool _isLoading = false;
+  bool _hasFetched = false;
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +66,54 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
     } catch (_) {}
   }
 
+  Future<void> _fetchLatestDelivery() async {
+    if (_hasFetched) return;
+    _hasFetched = true;
+    setState(() => _isLoading = true);
+    try {
+      final res = await CoreApiService.getOrderHistory().timeout(const Duration(seconds: 2));
+      final orders = res['orders'] as List<dynamic>? ?? [];
+      dynamic latest;
+      for (final o in orders) {
+        if (o is Map<String, dynamic>) {
+          if (o['pay_calculation_result'] != null || o['status'] == 'delivered') {
+            latest = o;
+            break;
+          }
+        }
+      }
+      if (latest == null && orders.isNotEmpty && orders.first is Map<String, dynamic>) {
+        latest = orders.first;
+      }
+
+      if (latest != null && mounted) {
+        final orderMap = latest as Map<String, dynamic>;
+        setState(() {
+          try {
+            _order = Order.fromJson(orderMap);
+          } catch (_) {}
+          _orderId = (orderMap['order_id'] ?? orderMap['orderId'] ?? '').toString();
+          _distanceKm = (orderMap['distance_km'] as num?)?.toDouble() ?? 1.25;
+          _waitMins = (orderMap['restaurant_wait_mins'] as num?)?.toInt() ?? 3;
+          _isSurgeActive = orderMap['is_surge_active'] as bool? ?? false;
+          _isOutOfZone = orderMap['is_out_of_zone'] as bool? ?? false;
+          if (orderMap['delay_context'] is Map<String, dynamic>) {
+            _delayContext = DelayContext.fromJson(orderMap['delay_context'] as Map<String, dynamic>);
+          }
+          final payStatus = orderMap['pay_status'] as String? ?? 'calculated';
+          _isPending = payStatus == 'pending';
+          if (orderMap['pay_calculation_result'] is Map<String, dynamic>) {
+            _payResult = PayResult.fromJson(orderMap['pay_calculation_result'] as Map<String, dynamic>);
+            _isCached = _payResult?.isCached ?? false;
+          }
+        });
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
   // Fallback defaults for developer launch without arguments
   String _orderId = '';
   double _distanceKm = 1.25;
@@ -75,6 +126,9 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _parseArguments();
+    if (widget.autoFetch && _order == null && _payResult == null && _orderId.isEmpty) {
+      _fetchLatestDelivery();
+    }
   }
 
   void _parseArguments() {
@@ -213,7 +267,16 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_order == null && _payResult == null && !_isPending && _orderId.isEmpty) ...[
+              if (_isLoading) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 60),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: FairDropColors.brandGreen,
+                    ),
+                  ),
+                ),
+              ] else if (_order == null && _payResult == null && !_isPending && _orderId.isEmpty) ...[
                 _buildEmptyStateCard(),
               ] else ...[
                 // ── Header Card: Order Metas ─────────────────────────────────

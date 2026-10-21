@@ -231,7 +231,17 @@ class _RestaurantOrdersScreenState extends State<RestaurantOrdersScreen> {
                                 final status = (order['status'] as String? ?? 'accepted').toUpperCase();
                                 final isReady = _computeIsReady(order);
                                 final items = (order['items'] as List<dynamic>?) ?? [];
-                                final total = (order['total_price'] as num?)?.toDouble() ?? 0.0;
+                                double computedTotal = 0.0;
+                                for (final it in items) {
+                                  if (it is Map<String, dynamic>) {
+                                    final p = (it['price'] as num?)?.toDouble() ?? 0.0;
+                                    final q = (it['quantity'] as num?)?.toInt() ?? 1;
+                                    computedTotal += p * q;
+                                  }
+                                }
+                                final total = (order['total_price'] as num?)?.toDouble() ??
+                                    (order['total_amount'] as num?)?.toDouble() ??
+                                    computedTotal;
                                 final delivAddr = order['delivery_address'] as Map<String, dynamic>?;
                                 final delivLabel = delivAddr?['label'] as String? ?? 'Kollam Delivery Location';
                                 final distKm = (order['distance_km'] as num?)?.toDouble() ?? 1.5;

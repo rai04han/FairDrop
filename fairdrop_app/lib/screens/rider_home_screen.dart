@@ -97,6 +97,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
 
   // Active incoming order (if assigned)
   Map<String, dynamic>? _incomingOrder;
+  Map<String, dynamic>? _latestDeliveredOrder;
   Map<String, dynamic>? _scheduledConfig;
 
   static String _extractAddress(dynamic address, {String fallback = ''}) {
@@ -133,6 +134,31 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
         _currentZone = widget.initialZone!;
       });
     }
+  }
+
+
+  Future<void> _navigateToEarnings() async {
+    if (_latestDeliveredOrder != null) {
+      Navigator.pushNamed(context, '/pay-breakdown', arguments: _latestDeliveredOrder);
+      return;
+    }
+    try {
+      final hist = await CoreApiService.getOrderHistory().timeout(const Duration(seconds: 2));
+      final orders = hist['orders'] as List<dynamic>? ?? [];
+      for (final o in orders) {
+        if (o is Map<String, dynamic> &&
+            (o['pay_calculation_result'] != null || o['status'] == 'delivered')) {
+          _latestDeliveredOrder = o;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.pushNamed(
+      context,
+      '/pay-breakdown',
+      arguments: _latestDeliveredOrder,
+    );
   }
 
   @override
@@ -241,6 +267,17 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _scheduledConfig = configData['scheduled'] as Map<String, dynamic>?;
         });
       }
+      try {
+        final hist = await CoreApiService.getOrderHistory().timeout(const Duration(seconds: 1));
+        final orders = hist['orders'] as List<dynamic>? ?? [];
+        for (final o in orders) {
+          if (o is Map<String, dynamic> &&
+              (o['pay_calculation_result'] != null || o['status'] == 'delivered')) {
+            _latestDeliveredOrder = o;
+            break;
+          }
+        }
+      } catch (_) {}
       // Immediately check for any active or newly allocated order
       _pollForOrder();
     } catch (_) {
@@ -1843,7 +1880,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               Navigator.pushNamed(context, '/zone-map');
               break;
             case 2:
-              Navigator.pushNamed(context, '/pay-breakdown');
+              _navigateToEarnings();
               break;
             case 3:
               Navigator.pushNamed(context, '/profile');
@@ -2119,7 +2156,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 OutlinedButton.icon(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    Navigator.pushNamed(context, '/pay-breakdown');
+                    _navigateToEarnings();
                   },
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: FairDropColors.mintBorder),

@@ -53,7 +53,18 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> {
     final deliveryLoc = _order?['delivery_location'] as String? ??
         (_order?['delivery_address'] as Map<String, dynamic>?)?['label'] as String? ??
         'Pin A — Chinnakada';
-    final total = (_order?['total_price'] as num?)?.toDouble() ?? 375.0;
+    final itemsList = (_order?['items'] as List<dynamic>?) ?? [];
+    double computedTotal = 0.0;
+    for (final item in itemsList) {
+      if (item is Map<String, dynamic>) {
+        final p = (item['price'] as num?)?.toDouble() ?? 0.0;
+        final q = (item['quantity'] as num?)?.toInt() ?? 1;
+        computedTotal += p * q;
+      }
+    }
+    final total = (_order?['total_price'] as num?)?.toDouble() ??
+        (_order?['total_amount'] as num?)?.toDouble() ??
+        (computedTotal > 0 ? computedTotal : 0.0);
     final distKm = (_order?['distance_km'] as num?)?.toDouble() ?? 2.5;
 
     final isNoRider = allocation == 'no_rider_available';

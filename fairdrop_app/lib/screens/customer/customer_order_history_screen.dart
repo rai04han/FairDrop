@@ -207,12 +207,22 @@ class _CustomerOrderHistoryScreenState extends State<CustomerOrderHistoryScreen>
                             final status = (order['status'] ?? 'placed').toString();
                             final statusColor = _getStatusColor(status);
                             final createdAt = _formatDate(order['created_at']);
-                            final totalAmount = double.tryParse(order['total_amount']?.toString() ?? '0') ?? 0;
+                            final items = (order['items'] as List<dynamic>? ?? []);
+                            double itemsTotal = 0.0;
+                            for (final it in items) {
+                              if (it is Map<String, dynamic>) {
+                                final p = double.tryParse(it['price']?.toString() ?? '0') ?? 0.0;
+                                final q = int.tryParse(it['quantity']?.toString() ?? '1') ?? 1;
+                                itemsTotal += p * q;
+                              }
+                            }
+                            final rawTotal = double.tryParse(order['total_amount']?.toString() ?? '') ??
+                                double.tryParse(order['total_price']?.toString() ?? '');
+                            final totalAmount = rawTotal ?? itemsTotal;
                             final deliveryFee = double.tryParse(order['delivery_fee']?.toString() ?? '0') ?? 0;
                             final distanceKm = double.tryParse(order['distance_km']?.toString() ?? '0') ?? 0;
                             final deliveryAddress = order['delivery_address']?['label'] ?? 'Delivery Address';
                             final restaurantName = order['restaurant_name'] ?? 'Restaurant Partner';
-                            final items = (order['items'] as List<dynamic>? ?? []);
 
                             return Card(
                               key: Key('customer_order_card_$orderId'),
