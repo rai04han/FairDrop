@@ -211,6 +211,21 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
 
   double get _totalMeterPay => _effectiveBaseRate + _distancePay + _waitPay + _incentivePerOrder;
 
+  String _formatTime(DateTime dt) {
+    final local = dt.toLocal();
+    final hour = local.hour;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return '$displayHour:$minute $period';
+  }
+
+  String? get _estimatedDeliveryDuration {
+    if (_distanceKm <= 0) return null;
+    final mins = ((_distanceKm / 20.0) * 60).ceil();
+    return 'Est. $mins min${mins == 1 ? '' : 's'}';
+  }
+
   Future<void> _advanceStep() async {
     if (_currentStep >= 3) return;
 
@@ -503,13 +518,13 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                     Expanded(
                                       child: Text(
                                         'Order #$orderId',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w800,
-                                          color: FairDropColors.brandNavy,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                         style: GoogleFonts.plusJakartaSans(
+                                           fontSize: 17,
+                                           fontWeight: FontWeight.w800,
+                                           color: FairDropColors.brandNavy,
+                                         ),
+                                         softWrap: true,
+                                       ),
                                     ),
                                   ],
                                 ),
@@ -629,7 +644,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                                 ),
                                               ),
                                               Text(
-                                                'Arrived 1:12 PM',
+                                                _arrivedAt != null ? 'Arrived ${_formatTime(_arrivedAt!)}' : 'Not arrived yet',
                                                 style: GoogleFonts.plusJakartaSans(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w600,
@@ -696,7 +711,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                                 ),
                                               ),
                                               Text(
-                                                'Est. 12 mins',
+                                                _estimatedDeliveryDuration ?? '',
                                                 style: GoogleFonts.plusJakartaSans(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w700,

@@ -199,5 +199,52 @@ void main() {
       // Successfully transitioned to /delivery-summary
       expect(find.text('Delivery Summary Screen Route'), findsOneWidget);
     });
+
+    testWidgets('renders Not arrived yet before arrival, updates on Confirm Arrived, derives estimated duration, and wraps full order ID (F29 / R25)', (tester) async {
+      final longOrder = Order(
+        id: 'active-order-long-id',
+        orderId: 'ORD-20261021-0008-EXTENDED-FULL-LABEL',
+        customerId: 'cust-1',
+        restaurantId: 'rest-1',
+        deliveryAddress: OrderAddress(label: 'Pin A, Kollam', latitude: 8.8932, longitude: 76.5950),
+        restaurantAddress: OrderAddress(label: 'Hotel Arun, Kollam', latitude: 8.8870, longitude: 76.5900),
+        distanceKm: 2.5,
+        status: 'assigned',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ActiveDeliveryScreen(
+            order: longOrder,
+            autoStartTimer: false,
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      // 1. Full Order ID wraps without ellipsis
+      final orderIdFinder = find.text('Order #ORD-20261021-0008-EXTENDED-FULL-LABEL');
+      expect(orderIdFinder, findsOneWidget);
+      final orderIdText = tester.widget<Text>(orderIdFinder);
+      expect(orderIdText.softWrap, isTrue);
+
+      // 2. Before arrival, shows 'Not arrived yet'
+      expect(find.text('Not arrived yet'), findsOneWidget);
+
+      // 3. Distance 2.5 km @ 20 km/h = 7.5 -> 8 mins ('Est. 8 mins')
+      expect(find.text('Est. 8 mins'), findsOneWidget);
+
+      // 4. Tap Confirm Arrived at Restaurant
+      await tester.ensureVisible(find.byKey(const Key('advance_step_button')));
+      await tester.tap(find.byKey(const Key('advance_step_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1200));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // After arrival, shows 'Arrived <time>'
+      expect(find.text('Not arrived yet'), findsNothing);
+      expect(find.textContaining('Arrived '), findsOneWidget);
+    });
   });
 }

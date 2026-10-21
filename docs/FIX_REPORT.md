@@ -839,6 +839,33 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `fairdrop_app flutter analyze`: No issues found.
 - `fairdrop_app flutter test test/admin_panel_test.dart`: 6/6 passed.
 
+---
+
+## F29 (R25): Active Delivery Arrival Timestamp, Dynamic Travel ETA & Full Order ID Display
+
+### 1. Root Causes & Findings
+- **Hardcoded "Arrived 1:12 PM"**: On the Active Delivery tracker under Pickup Hub, the arrival time was statically rendered as `'Arrived 1:12 PM'` regardless of actual order progress or current time.
+- **Hardcoded "Est. 12 mins" Customer Drop Time**: The customer delivery segment statically rendered `'Est. 12 mins'` instead of deriving estimated travel duration from the actual metered delivery distance.
+- **Order ID Ellipsis Truncation**: In the delivery tracker header card, `'Order #$orderId'` used `overflow: TextOverflow.ellipsis`, truncating full order numbers (e.g. `Order #ORD-20261021-0008`) on mobile widths into `Order #ORD-2026...`.
+
+### 2. Remediation Applied
+- **`fairdrop_app/lib/screens/active_delivery_screen.dart`**:
+  - Implemented `_formatTime(DateTime dt)` to format timestamps into local `h:mm a` (e.g. `1:45 PM`).
+  - Bound Pickup Hub status to `_arrivedAt`: renders `'Arrived ${_formatTime(_arrivedAt!)}'` once confirmed, and `'Not arrived yet'` prior to arrival.
+  - Implemented dynamic travel ETA calculation: `_estimatedDeliveryDuration` computes `((_distanceKm / 20.0) * 60).ceil()` based on standard 20 km/h urban delivery travel speed, rendering `'Est. X mins'`.
+  - Removed `overflow: TextOverflow.ellipsis` and applied `softWrap: true` to the Order ID title, allowing the full order identifier to wrap naturally without truncation.
+- **`fairdrop_app/test/active_delivery_test.dart`**:
+  - Added test verifying:
+    1. Pre-arrival state renders `Not arrived yet`.
+    2. Tapping Confirm Arrived transitions state to `Arrived <time>`.
+    3. Estimated drop duration is dynamically computed from distance (2.5 km -> `Est. 8 mins`).
+    4. Extended order IDs wrap with `softWrap == true`.
+
+### 3. Verification & Test Evidence
+- `fairdrop_app flutter analyze`: No issues found.
+- `fairdrop_app flutter test test/active_delivery_test.dart`: 6/6 passed.
+- `fairdrop_app flutter test test/f19_layout_test.dart`: 3/3 passed (zero layout exceptions at 393px).
+
 ## 4. Final Verification Gate Summary (Part A + Part B)
 
 All six quality and operational gates have been executed and verified clean after completing all fixes (F1 through F23):
