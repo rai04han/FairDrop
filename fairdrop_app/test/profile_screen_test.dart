@@ -30,7 +30,7 @@ void main() {
       'wait_threshold_mins': 8,
       'wait_compensation': 2.50,
       'min_wage_per_hour': 95.00,
-      'effective_from': DateTime.now().add(const Duration(days: 7, hours: 2)).toIso8601String(),
+      'effective_from': DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day + 7).toIso8601String(),
       'change_reason': 'Kerala festive seasonal adjustment & fuel parity revision',
     };
 

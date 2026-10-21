@@ -643,12 +643,15 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                                   letterSpacing: 0.5,
                                                 ),
                                               ),
-                                              Text(
-                                                _arrivedAt != null ? 'Arrived ${_formatTime(_arrivedAt!)}' : 'Not arrived yet',
-                                                style: GoogleFonts.plusJakartaSans(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: FairDropColors.slateMuted,
+                                              Flexible(
+                                                child: Text(
+                                                  _arrivedAt != null ? 'Arrived ${_formatTime(_arrivedAt!)}' : 'Not arrived yet',
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: FairDropColors.slateMuted,
+                                                  ),
                                                 ),
                                               ),
                                             ],
@@ -710,12 +713,15 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                                   letterSpacing: 0.5,
                                                 ),
                                               ),
-                                              Text(
-                                                _estimatedDeliveryDuration ?? '',
-                                                style: GoogleFonts.plusJakartaSans(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: FairDropColors.brandNavy,
+                                              Flexible(
+                                                child: Text(
+                                                  _estimatedDeliveryDuration ?? '',
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: FairDropColors.brandNavy,
+                                                  ),
                                                 ),
                                               ),
                                             ],

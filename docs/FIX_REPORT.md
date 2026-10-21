@@ -145,18 +145,25 @@
 
 | Check | Result | Exact Summary Line |
 | --- | --- | --- |
-| **core-service: npm test** | **PASS** | `ℹ tests 73 \| ℹ suites 21 \| ℹ pass 73 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 33719.4828` |
-| **pay-service: npm test** | **PASS** | `ℹ tests 24 \| ℹ suites 8 \| ℹ pass 24 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 6548.7008` |
-| **root: npm run seed; npm run smoke** | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (8.47s)` |
-| **app: flutter analyze** | **PASS** | `No issues found! (ran in 5.7s)` |
-| **app: flutter test** | **PASS** | `00:30 +121: All tests passed!` |
-| **app: flutter build web** | **PASS** | `√ Built build\web (97.4s)` |
+| **core-service: npm test** | **PASS** | `ℹ tests 78 \| ℹ suites 23 \| ℹ pass 78 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 109897.9806` |
+| **pay-service: npm test** | **PASS** | `ℹ tests 35 \| ℹ suites 9 \| ℹ pass 35 \| ℹ fail 0 \| ℹ cancelled 0 \| ℹ skipped 0 \| ℹ todo 0 \| ℹ duration_ms 31679.9383` |
+| **root: npm run seed; npm run smoke** | **PASS** | `✔ ALL 14 DEMO FLOW STEPS PASSED SUCCESSFULLY (12.13s)` |
+| **app: flutter analyze** | **PASS** | `No issues found! (ran in 8.4s)` |
+| **app: flutter test** | **PASS** | `00:52 +140: All tests passed!` |
+| **app: flutter build web** | **PASS** | `√ Built build\web (214.8s)` |
 
 ---
 
 ## 4. Git Commit History (`pre-audit..HEAD`)
 
 ```text
+16c80da fix(F30): bind live shift card and fairness index hub name to current zone (R20-R25)
+1cf72cb fix(F29): format arrival timestamp from real state, derive travel ETA, and wrap order ID (R25)
+464a362 fix(F28): add logout button, fix header title visibility, and cite Fairwork P3 on admin panel (R22)
+efd9454 fix(F27): format engaged time in minutes and gate hourly rate until floor window (R23, R24)
+271ac9a fix(F26): ensure new rider has zero deliveries on first login (R21)
+25a7130 fix(F25): compare total earnings and update analytics scenario chart (R20)
+ed1ee0d fix(F24): add FairDrop per-order incentive and 7-line ledger (R20)
 311470a test(profile): use dynamic future timestamp for 7-day notice banner test (AUDIT-F14)
 6c99184 fix(auth): remove unauthorized pay-config history call from rider profile (AUDIT-F14)
 591a61b fix(analytics): implement balanced zomato incentive ladder comparison and parity table (AUDIT-F13)
