@@ -35,7 +35,8 @@
 | **F22** | Canonical delay flow enums (`traffic`, `weather`, `restaurant`, `customer`, `other`; `rider_report`, `ops_dispatch`, `system_detection`) and delivery failure rollback to `picked_up` (FR-19, FR-20, FR-24) | **FIXED** | `c645d26` | `core-service/src/modules/orders/order.controller.js`<br>`core-service/src/modules/orders/order.model.js`<br>`core-service/tests/orders.test.js`<br>`pay-service/src/services/payEngine.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart` | `core-service npm test`: passed;<br>`pay-service npm test`: passed;<br>Simulated pay failure maintains order at picked_up; retry succeeds |
 | **F23** | Support string menu item IDs (`item-101`, `item-102`, `item-103`) in core-service schemas, seed, and availability toggles (FR-63, FR-64) | **FIXED** | `8a67564` | `core-service/src/modules/restaurants/restaurant.model.js`<br>`core-service/src/modules/restaurants/restaurant.controller.js`<br>`core-service/tests/restaurants.test.js`<br>`scripts/seed.js` | `core-service npm test`: 78/78 passed;<br>Both seeded and newly created menu items toggle availability by string ID |
 | **F24** | FairDrop per-order incentive (`incentive_per_order` default 17.04); 7-line ledger (Base, Distance, Surge, Wait, FairDrop Incentive, Total Delivery Pay, Effective Hourly Rate); updated Shift card, Offer card (+₹17.04 FairDrop incentive), Acceptance screen, Active meter, Dashboard, and Admin Active Config; rename payout labels to Estimated (R20) | **FIXED** | `ed1ee0d` | `database/mysql/schema.sql`<br>`scripts/seed.js`<br>`pay-service/src/payEngine.js`<br>`pay-service/src/routes/payRoutes.js`<br>`pay-service/src/routes/adminRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`core-service/src/modules/riders/rider.controller.js`<br>`docs/FairDrop_Flutter_App_PRD_v2.1.md`<br>`fairdrop_app/lib/models/pay_result.dart`<br>`fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/order_acceptance_screen.dart`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/test/admin_panel_test.dart`<br>`fairdrop_app/test/f16_floor_redesign_test.dart`<br>`fairdrop_app/test/order_acceptance_test.dart` | `pay-service npm test`: 33/33 passed;<br>`core-service npm test`: 78/78 passed;<br>`flutter test`: 135/135 passed;<br>`flutter analyze`: 0 issues;<br>**Assumption**: Floor top-up still compares block pay to the floor, with total pay now including the incentive. |
-| **F25** | Analytics total earnings comparison; Actual Deliveries mode shows split (`order pay ₹Y + incentive ₹Z`) with Zomato ladder incentive (₹0 below 19 orders); remove ₹20/delivery cliff baseline; Scenario chart y-axis = cumulative total earnings ($n \times \text{average order pay} + \text{incentive}$), stating rider's real average or config base+2km rate; parity table with 27-order equality, per-order incentive keeps paying beyond 27 orders, removed 'capped at 27' wording (R20) | **FIXED** | Pending commit | `pay-service/src/routes/payRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 33/33 passed;<br>`flutter analyze`: 0 issues;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Removed ₹20/delivery cliff baseline and 'capped at 27' wording |
+| **F25** | Analytics total earnings comparison; Actual Deliveries mode shows split (`order pay ₹Y + incentive ₹Z`) with Zomato ladder incentive (₹0 below 19 orders); remove ₹20/delivery cliff baseline; Scenario chart y-axis = cumulative total earnings ($n \times \text{average order pay} + \text{incentive}$), stating rider's real average or config base+2km rate; parity table with 27-order equality, per-order incentive keeps paying beyond 27 orders, removed 'capped at 27' wording (R20) | **FIXED** | `25a7130` | `pay-service/src/routes/payRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 33/33 passed;<br>`flutter analyze`: 0 issues;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Removed ₹20/delivery cliff baseline and 'capped at 27' wording |
+| **F26** | Remove app fallback sample (`ORD-20261019-0001` with `CACHED` badge); show "No completed deliveries yet" on empty deliveries; update `seed.js` to guarantee demo rider has zero history and add second empty rider account `rider_new@fairdrop.in` (R21) | **FIXED** | Pending commit | `fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/test/pay_breakdown_test.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`scripts/seed.js`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/pay_breakdown_test.dart`: 5/5 passed;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>**Source Report**: Client app fallback in `pay_breakdown_screen.dart` lines 38, 86, 106–120 |
 
 ---
 
@@ -736,6 +737,34 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `pay-service npm test`: 33/33 passed.
 - `fairdrop_app flutter analyze`: No issues found.
 - `fairdrop_app flutter test test/analytics_dashboard_test.dart`: 11/11 passed (including 393px mobile test).
+
+---
+
+## F26 (R21): Zero Seeded Deliveries on First Login & App Fallback Removal
+
+### 1. Root Causes & Findings
+- **Source Identification**: The appearance of `ORD-20261019-0001` with a `CACHED` badge on first login was caused by a **client-side app fallback** in `fairdrop_app/lib/screens/pay_breakdown_screen.dart` (lines 38, 86, and 106–120). Whenever the screen was accessed without active order arguments or when `payResult` was null, the widget instantiated a hardcoded `PayResult` with `orderId: 'ORD-20261019-0001'` and `isCached: true`.
+- **Empty State Text Alignment**: `rider_dashboard_screen.dart` previously displayed `"No completed deliveries yet today."`, whereas standard consistency requires `"No completed deliveries yet"`.
+- **Zero-History Rider Demo Accounts**: `scripts/seed.js` clears all orders, deliveries, and earnings on execution. To guarantee clean testing, `seed.js` was enhanced to register an explicit second empty demo rider account (`rider_new@fairdrop.in`, "New Rider Demo") synced to both MongoDB and MySQL.
+
+### 2. Remediation Applied
+- **`fairdrop_app/lib/screens/pay_breakdown_screen.dart`**:
+  - Removed default fallback `_orderId = 'ORD-20261019-0001'` (replaced with empty string).
+  - Removed mock `PayResult` fallback instantiation block (lines 106–120).
+  - Added `_buildEmptyStateCard()` displaying `"No completed deliveries yet"` with `"Complete your first delivery to see an itemized pay breakdown."` when opened without completed orders.
+- **`fairdrop_app/lib/screens/rider_dashboard_screen.dart`**:
+  - Updated empty deliveries state message to `"No completed deliveries yet"`.
+- **`scripts/seed.js`**:
+  - Added second empty rider account: `rider_new@fairdrop.in` / `password123` ("New Rider Demo", motorcycle, `KLM-CHK`).
+  - Synced account to MongoDB `users` and MySQL `riders` tables.
+- **Tests**:
+  - Updated `analytics_dashboard_test.dart` to assert `"No completed deliveries yet"`.
+  - Added widget test in `pay_breakdown_test.dart` verifying that `PayBreakdownScreen` rendered without arguments displays `"No completed deliveries yet"` and does not render `ORD-20261019-0001` or `CACHED`.
+
+### 3. Verification & Test Evidence
+- `fairdrop_app flutter analyze`: No issues found.
+- `fairdrop_app flutter test test/pay_breakdown_test.dart`: 5/5 passed.
+- `fairdrop_app flutter test test/analytics_dashboard_test.dart`: 11/11 passed.
 
 ---
 

@@ -584,7 +584,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                 child: Text(
-                  'No completed deliveries yet today.',
+                  'No completed deliveries yet',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     color: FairDropColors.slateMuted,

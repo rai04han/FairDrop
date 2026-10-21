@@ -135,5 +135,19 @@ void main() {
 
       expect(find.textContaining('Out-of-Zone Delivery Transition (FR-73)'), findsOneWidget);
     });
+
+    testWidgets('renders empty state "No completed deliveries yet" when launched without arguments (F26 / R21)', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: PayBreakdownScreen(),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('No completed deliveries yet'), findsOneWidget);
+      expect(find.text('ORD-20261019-0001'), findsNothing);
+      expect(find.text('CACHED'), findsNothing);
+    });
   });
 }

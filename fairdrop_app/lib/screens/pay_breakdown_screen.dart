@@ -35,7 +35,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
   String? _errorMessage;
 
   // Fallback defaults for developer launch without arguments
-  String _orderId = 'ORD-20261019-0001';
+  String _orderId = '';
   double _distanceKm = 1.25;
   int _waitMins = 3;
   bool _isSurgeActive = false;
@@ -83,7 +83,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
         _isPending = _order!.payStatus == 'pending' || _order!.payCalculationResult == null;
         _payResult = _order!.payCalculationResult;
       } else {
-        _orderId = (args['order_id'] ?? args['orderId'] ?? 'ORD-20261019-0001').toString();
+        _orderId = (args['order_id'] ?? args['orderId'] ?? '').toString();
         _distanceKm = (args['distance_km'] as num?)?.toDouble() ?? 1.25;
         _waitMins = (args['restaurant_wait_mins'] as num?)?.toInt() ?? 3;
         _isSurgeActive = args['is_surge_active'] as bool? ?? false;
@@ -103,21 +103,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
       }
     }
 
-    // Seeded demo fallback if pay result is null and not explicitly pending
-    if (_payResult == null && !_isPending) {
-      _isCached = true;
-      _payResult = PayResult(
-        orderId: _orderId,
-        baseRate: 15.0,
-        distancePay: 7.50,
-        surgeBonus: 0.0,
-        waitCompensation: 10.0,
-        totalDeliveryPay: 32.50,
-        floorTopup: 0.0,
-        hourlyEarningsSoFar: 65.0,
-        isCached: true,
-      );
-    } else if (_payResult != null) {
+    if (_payResult != null) {
       _isCached = _payResult!.isCached;
     }
   }
@@ -192,27 +178,31 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Header Card: Order Metas ─────────────────────────────────
-              _buildTripSummaryCard(),
-              const SizedBox(height: 16),
-
-              // ── Delay Context Badge (FR-25) ──────────────────────────────
-              _buildDelayContextBadge(),
-              const SizedBox(height: 16),
-
-              // ── Out-of-Zone Transition Banner (FR-73) ───────────────────
-              if (_isOutOfZone) ...[
-                _buildOutOfZoneBanner(),
+              if (_order == null && _payResult == null && !_isPending && _orderId.isEmpty) ...[
+                _buildEmptyStateCard(),
+              ] else ...[
+                // ── Header Card: Order Metas ─────────────────────────────────
+                _buildTripSummaryCard(),
                 const SizedBox(height: 16),
-              ],
 
-              // ── Main Content: Pending State vs Itemized Breakdown ────────
-              if (_isPending) ...[
-                _buildPendingCard(),
-              ] else if (_payResult != null) ...[
-                _buildTotalHeroCard(),
+                // ── Delay Context Badge (FR-25) ──────────────────────────────
+                _buildDelayContextBadge(),
                 const SizedBox(height: 16),
-                _buildItemizedLedgerCard(),
+
+                // ── Out-of-Zone Transition Banner (FR-73) ───────────────────
+                if (_isOutOfZone) ...[
+                  _buildOutOfZoneBanner(),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Main Content: Pending State vs Itemized Breakdown ────────
+                if (_isPending) ...[
+                  _buildPendingCard(),
+                ] else if (_payResult != null) ...[
+                  _buildTotalHeroCard(),
+                  const SizedBox(height: 16),
+                  _buildItemizedLedgerCard(),
+                ],
               ],
 
               const SizedBox(height: 24),
@@ -223,6 +213,54 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ── 0. Empty State Card ───────────────────────────────────────────────────
+  Widget _buildEmptyStateCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: FairDropColors.cardShadow,
+        border: Border.all(color: FairDropColors.mintBorder),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: FairDropColors.mintBg,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.receipt_long_rounded,
+              color: FairDropColors.brandGreen,
+              size: 40,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No completed deliveries yet',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: FairDropColors.brandNavy,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Complete your first delivery to see an itemized pay breakdown.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              color: FairDropColors.slateMuted,
+            ),
+          ),
+        ],
       ),
     );
   }

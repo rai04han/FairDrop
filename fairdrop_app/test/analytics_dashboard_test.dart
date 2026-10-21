@@ -185,7 +185,7 @@ void main() {
       expect(find.text('₹0.00'), findsWidgets);
       expect(find.text('0'), findsWidgets);
       expect(find.text('—'), findsWidgets);
-      expect(find.text('No completed deliveries yet today.'), findsOneWidget);
+      expect(find.text('No completed deliveries yet'), findsOneWidget);
       expect(find.textContaining('NaN'), findsNothing);
       expect(find.textContaining('Infinity'), findsNothing);
     });

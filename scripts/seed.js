@@ -359,13 +359,29 @@ async function seed() {
       active_hours_today: 0,
     },
   });
-  console.log('  🛵 Riders created in MongoDB: Rider 1 (CHK), Rider 2 (PLY), Rider 3 (KLK)');
+
+  const riderNew = await User.create({
+    name: 'New Rider Demo',
+    email: 'rider_new@fairdrop.in',
+    phone: '9876543209',
+    password_hash: passwordHash,
+    role: 'rider',
+    rider_profile: {
+      vehicle_type: 'motorcycle',
+      zone_id: chk._id,
+      current_zone_id: chk._id,
+      is_available: false,
+      active_hours_today: 0,
+    },
+  });
+  console.log('  🛵 Riders created in MongoDB: Rider 1 (CHK), Rider 2 (PLY), Rider 3 (KLK), New Rider (rider_new@fairdrop.in)');
 
   // ── Step 6: Sync Riders into MySQL with Matching IDs ───────────────────────
   const ridersToSync = [
     { id: rider1._id.toString(), name: rider1.name, phone: rider1.phone, zone_id: 'KLM-CHK' },
     { id: rider2._id.toString(), name: rider2.name, phone: rider2.phone, zone_id: 'KLM-PLY' },
     { id: rider3._id.toString(), name: rider3.name, phone: rider3.phone, zone_id: 'KLM-KLK' },
+    { id: riderNew._id.toString(), name: riderNew.name, phone: riderNew.phone, zone_id: 'KLM-CHK' },
   ];
 
   for (const r of ridersToSync) {
