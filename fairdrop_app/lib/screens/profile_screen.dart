@@ -20,12 +20,20 @@ import '../services/api_service.dart';
 class ProfileScreen extends StatefulWidget {
   final Map<String, dynamic>? initialUser;
   final Map<String, dynamic>? initialUpcomingConfig;
+  final int? initialDeliveriesToday;
+  final double? initialHourlyRate;
+  final double? initialEngagedHours;
+  final double? initialFloorTopup;
   final bool autoFetch;
 
   const ProfileScreen({
     super.key,
     this.initialUser,
     this.initialUpcomingConfig,
+    this.initialDeliveriesToday,
+    this.initialHourlyRate,
+    this.initialEngagedHours,
+    this.initialFloorTopup,
     this.autoFetch = true,
   });
 
@@ -36,12 +44,29 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _user;
   Map<String, dynamic>? _upcomingConfig;
+  int _deliveriesToday = 0;
+  double _engagedHoursToday = 0.0;
+  double _hourlyRate = 0.0;
+  double _floorTopupToday = 0.0;
   bool _isLoading = true;
   final bool _isActive = true;
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialDeliveriesToday != null) {
+      _deliveriesToday = widget.initialDeliveriesToday!;
+    }
+    if (widget.initialHourlyRate != null) {
+      _hourlyRate = widget.initialHourlyRate!;
+    }
+    if (widget.initialEngagedHours != null) {
+      _engagedHoursToday = widget.initialEngagedHours!;
+    }
+    if (widget.initialFloorTopup != null) {
+      _floorTopupToday = widget.initialFloorTopup!;
+    }
+
     if (widget.initialUser != null || widget.initialUpcomingConfig != null) {
       _user = widget.initialUser;
       _upcomingConfig = widget.initialUpcomingConfig;
@@ -72,9 +97,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // Optional: upcoming pay change notice is not blocking
       }
 
+      int deliveries = 0;
+      double engagedHours = 0.0;
+      double hourlyRate = 0.0;
+      double floorTopup = 0.0;
+      try {
+        final statsData = await CoreApiService.getTodayStats();
+        final stats = statsData['stats'] as Map<String, dynamic>? ?? {};
+        deliveries = (stats['deliveries_today'] as num?)?.toInt() ?? 0;
+        engagedHours = (stats['engaged_hours_today'] as num?)?.toDouble() ?? 0.0;
+        hourlyRate = (stats['hourly_rate'] as num?)?.toDouble() ?? 0.0;
+        floorTopup = (stats['floor_topup_today'] as num?)?.toDouble() ?? 0.0;
+      } catch (_) {}
+
       setState(() {
         _user = user;
         _upcomingConfig = upcoming;
+        _deliveriesToday = deliveries;
+        _engagedHoursToday = engagedHours;
+        _hourlyRate = hourlyRate;
+        _floorTopupToday = floorTopup;
         _isLoading = false;
       });
     } catch (_) {
@@ -154,11 +196,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _policyItem('Base Fare', '₹15.00 fixed starting baseline for all orders in Kollam.'),
-            _policyItem('Metered Distance', '₹6.00 to ₹10.00/km GPS-verified travel compensation.'),
-            _policyItem('Excess Wait Pay', '₹1.00 to ₹5.00/min compensated after 10 mins restaurant wait.'),
-            _policyItem('Monsoon Surge', '100% of collected client surge goes directly to the active rider.'),
-            _policyItem('Kerala Wage Floor', 'Guaranteed minimum ₹70–₹150/hr statutory floor top-up.'),
+            _policyItem('Base Fare', 'Fixed pickup compensation per delivered order in Kollam.'),
+            _policyItem('Metered Distance', 'Direct GPS transit compensation per kilometer.'),
+            _policyItem('Wait Compensation', 'Flat bonus credited when geofenced restaurant wait exceeds threshold.'),
+            _policyItem('Monsoon Surge', '100% of weather surge goes directly to the active rider.'),
+            _policyItem('Kerala Wage Floor', 'Statutory minimum floor evaluated per completed 60-min block of cumulative engaged time.'),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () => Navigator.pop(ctx),
@@ -292,29 +334,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         color: Colors.white.withValues(alpha: 0.8),
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.2),
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.verified_rounded, size: 14, color: Colors.white),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'Verified Partner',
-                                            style: GoogleFonts.plusJakartaSans(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+
                                   ],
                                 ),
                               ),
@@ -339,11 +359,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Row(
                             children: [
                               Expanded(
-                                child: _buildMetricItem('32', 'Deliveries'),
+                                child: _buildMetricItem(
+                                  '$_deliveriesToday',
+                                  'Deliveries',
+                                  sublabel: 'completed today',
+                                ),
                               ),
                               Container(height: 36, width: 1, color: const Color(0xFFF1F5F9)),
                               Expanded(
-                                child: _buildMetricItem('₹68/hr', 'Avg earnings'),
+                                child: _buildMetricItem(
+                                  _engagedHoursToday > 0 ? '₹${_hourlyRate.toStringAsFixed(0)}/hr' : ' — ',
+                                  'Avg earnings',
+                                  sublabel: _engagedHoursToday > 0
+                                      ? (_floorTopupToday > 0 ? '(incl. floor top-up)' : '(excl. floor top-up)')
+                                      : '0 engaged hrs',
+                                ),
                               ),
                               Container(height: 36, width: 1, color: const Color(0xFFF1F5F9)),
                               Expanded(
@@ -477,10 +507,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        _rateChip('Base Fare', '₹${double.tryParse(_upcomingConfig!['base_rate']?.toString() ?? '15')?.toStringAsFixed(2) ?? '15.00'}'),
-                                        _rateChip('Per Km', '₹${double.tryParse(_upcomingConfig!['per_km_rate']?.toString() ?? '7')?.toStringAsFixed(2) ?? '7.00'}/km'),
-                                        _rateChip('Wait Comp', '₹${double.tryParse(_upcomingConfig!['wait_compensation']?.toString() ?? '2')?.toStringAsFixed(2) ?? '2.00'}/m'),
-                                        _rateChip('Min Floor', '₹${double.tryParse(_upcomingConfig!['min_wage_per_hour']?.toString() ?? '87.50')?.toStringAsFixed(0) ?? '88'}/hr'),
+                                        Expanded(child: _rateChip('Base Fare', '₹${double.tryParse(_upcomingConfig!['base_rate']?.toString() ?? '15')?.toStringAsFixed(2) ?? '15.00'}')),
+                                        Expanded(child: _rateChip('Per Km', '₹${double.tryParse(_upcomingConfig!['per_km_rate']?.toString() ?? '7')?.toStringAsFixed(2) ?? '7.00'}/km')),
+                                        Expanded(child: _rateChip('Flat bonus', '₹${double.tryParse(_upcomingConfig!['wait_compensation']?.toString() ?? '2')?.toStringAsFixed(2) ?? '2.00'}')),
+                                        Expanded(child: _rateChip('Min Floor', '₹${double.tryParse(_upcomingConfig!['min_wage_per_hour']?.toString() ?? '87.50')?.toStringAsFixed(0) ?? '88'}/hr')),
                                       ],
                                     ),
                                     if ((_upcomingConfig!['change_reason'] ?? '').toString().trim().isNotEmpty) ...[
@@ -507,7 +537,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      'Fairwork Principle 2: Statutory 7-day advance notice & wage transparency.',
+                                      'Fairwork Principle 3 (Fair Contracts): Statutory 7-day advance notice of rate adjustments.',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 10,
                                         fontWeight: FontWeight.w600,
@@ -556,7 +586,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 _buildMenuItem(
                                   icon: Icons.two_wheeler_rounded,
                                   title: 'Vehicle Details',
-                                  subtitle: 'EV Scooter (KL-02)',
+                                  subtitle: 'Delivery Vehicle',
                                   onTap: () {},
                                 ),
                                 const Divider(height: 1, indent: 56, endIndent: 16, color: Color(0xFFF1F5F9)),
@@ -570,7 +600,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 _buildMenuItem(
                                   icon: Icons.shield_outlined,
                                   title: 'Safety & Insurance',
-                                  subtitle: 'Accident & Health Covered',
+                                  subtitle: 'Safety Protocols & Guidelines',
                                   onTap: () {},
                                 ),
                                 const Divider(height: 1, indent: 56, endIndent: 16, color: Color(0xFFF1F5F9)),
@@ -621,7 +651,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildMetricItem(String value, String label) {
+  Widget _buildMetricItem(String value, String label, {String? sublabel}) {
     return Column(
       children: [
         Text(
@@ -641,6 +671,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             color: FairDropColors.slateMuted,
           ),
         ),
+        if (sublabel != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            sublabel,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: FairDropColors.slateMuted,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ],
     );
   }
@@ -706,20 +748,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _rateChip(String label, String value) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: FairDropColors.brandNavy,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: FairDropColors.brandNavy,
+            ),
           ),
         ),
-        Text(
-          label,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 10,
-            color: FairDropColors.slateMuted,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 10,
+              color: FairDropColors.slateMuted,
+            ),
           ),
         ),
       ],

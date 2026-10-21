@@ -414,4 +414,37 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `fairdrop_app flutter test`: 130/130 passed (2 new widget tests passing).
 - `fairdrop_app flutter analyze`: No issues found!
 
+---
+
+## F18: Rider Profile Real Stats, Badges, & Revision Citation (AUDIT-F18 / R19)
+
+### 1. Root Causes & Findings
+- **Fabricated Metrics**: `ProfileScreen` rendered hardcoded static numbers (`'32'` Deliveries, `'₹68/hr'` Avg earnings) regardless of the authenticated rider's actual deliveries or cumulative engaged hours.
+- **Unverified Claims**: The driver profile header rendered a `'Verified Partner'` badge without backend verification. In the account navigation menu, `Safety & Insurance` displayed `'Accident & Health Covered'` despite no active insurance policy integration, and `Vehicle Details` hardcoded `'EV Scooter (KL-02)'`.
+- **Wait Compensation Label Mismatch**: The upcoming revision banner labeled wait compensation as `'₹X.XX/m'` (per minute) instead of a flat bonus from `pay-service`.
+- **Misattributed Fairwork Principle**: The 7-day advance notice requirement was cited as `"Fairwork Principle 2"`, whereas advance notice of contract and pay changes is Fairwork Principle 3 (Fair Contracts).
+- **Narrow Viewport Overflow**: On 393px mobile screens, the revision rates chip row overflowed horizontally by 88px due to unconstrained columns.
+
+### 2. Remediation Applied
+- **`fairdrop_app/lib/screens/profile_screen.dart`**:
+  - Bound `Deliveries` and `Avg earnings` directly to `CoreApiService.getTodayStats()`. When completed engaged hours = 0, displays clean zeros (`'0'` deliveries and `' — '` avg earnings).
+  - Labeled whether statutory floor top-ups are included in average earnings (`'(incl. floor top-up)'` vs `'(excl. floor top-up)'`).
+  - Removed the unverified `'Verified Partner'` badge from the rider profile header.
+  - Removed `'Accident & Health Covered'` subtitle from `Safety & Insurance` (updated to `'Safety Protocols & Guidelines'`).
+  - Removed fake vehicle label `'EV Scooter (KL-02)'` from `Vehicle Details` (updated to `'Delivery Vehicle'`).
+  - Updated revision banner wait compensation label to `'Flat bonus'` with flat ₹ amount (`₹2.50` instead of `₹2.50/m`).
+  - Corrected Fairwork principle citation to `"Fairwork Principle 3 (Fair Contracts): Statutory 7-day advance notice of rate adjustments."`
+  - Aligned `_showPolicyDialog` with F15/F16 (removed hardcoded numbers and per-minute wait pay).
+  - Wrapped each rate chip in `Expanded` with `FittedBox` scaling, completely eliminating the 88px RenderFlex overflow at 393px mobile width.
+
+### 3. Verification & Test Evidence
+- **`fairdrop_app/test/profile_screen_test.dart`**:
+  - Test 1: Verifies removal of `'Verified Partner'`, removal of `'Accident & Health Covered'`, and clean `'0'` / `' — '` display when engaged hours are 0.
+  - Test 2: Verifies revision banner renders `'Flat bonus'` and `₹2.50` (verifies `₹2.50/m` is gone), and asserts `"Fairwork Principle 3 (Fair Contracts)"` citation.
+  - Test 3: Verifies updated policy bottom sheet modal guarantees.
+  - Test 4 (393px mobile width): Verifies live stats (`3` deliveries, `₹82/hr`, `(incl. floor top-up)`) with 0 layout exceptions at 393px width.
+- `fairdrop_app flutter test test/profile_screen_test.dart`: 4/4 passed.
+- `fairdrop_app flutter analyze`: No issues found!
+
+
 
