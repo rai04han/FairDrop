@@ -20,7 +20,7 @@ void main() {
 
       await tester.pumpWidget(
         const MaterialApp(
-          home: RiderHomeScreen(),
+          home: RiderHomeScreen(autoFetch: false),
         ),
       );
       await tester.pumpAndSettle();
@@ -82,6 +82,61 @@ void main() {
 
       // Verify zero overflow exceptions inside the modal at 393px
       expect(tester.takeException(), isNull);
+    });
+    testWidgets('Shift card and Hub Fairness Index dynamically bind hub name to current zone (F30 / R20-R25)', (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      // 1. Test Polayathode (KLM-PLY)
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: RiderHomeScreen(
+            key: ValueKey('KLM-PLY'),
+            initialZone: 'KLM-PLY',
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('KLM-PLY'), findsOneWidget);
+      expect(find.textContaining('KLM-PLY • View Map'), findsOneWidget);
+      expect(find.text('Live Shift • Polayathode Hub'), findsOneWidget);
+      expect(find.text('Polayathode Hub'), findsOneWidget);
+
+      // 2. Test Kilikolloor (KLM-KLK)
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: RiderHomeScreen(
+            key: ValueKey('KLM-KLK'),
+            initialZone: 'KLM-KLK',
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('KLM-KLK'), findsOneWidget);
+      expect(find.text('Live Shift • Kilikolloor Hub'), findsOneWidget);
+      expect(find.text('Kilikolloor Hub'), findsOneWidget);
+
+      // 3. Test Chinnakkada (KLM-CHK)
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: RiderHomeScreen(
+            key: ValueKey('KLM-CHK'),
+            initialZone: 'KLM-CHK',
+            autoFetch: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('KLM-CHK'), findsOneWidget);
+      expect(find.text('Live Shift • Chinnakada Hub'), findsOneWidget);
+      expect(find.text('Chinnakada Hub'), findsOneWidget);
     });
   });
 }

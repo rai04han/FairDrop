@@ -40,6 +40,7 @@
 | **F27** | Format engaged time under 1h as 'X min active' (never '0.0 hrs'); gate average hourly rate to ' — ' with 'after N engaged min' (N = floor window) until evaluated; subtitle 'Floor evaluated after N min on orders'; status badge 'Not yet evaluated'; scale statutory floor by windowMinutes / 60 on window override (R23, R24) | **FIXED** | `efd9454` | `pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/lib/screens/profile_screen.dart`<br>`fairdrop_app/test/pay_breakdown_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 35/35 passed (2 new unit tests);<br>`flutter analyze`: 0 issues;<br>`flutter test test/pay_breakdown_test.dart`: 6/6 passed;<br>Zero 393px layout overflow exceptions |
 | **F28** | Admin Screen: add Logout button to AppBar with confirm dialog clearing token & returning to login; fix invisible title (navy text on navy bg -> white text style); update revision text to cite Fairwork Principle 3 (Fair Contracts) instead of non-existent P6 (R22) | **FIXED** | `464a362` | `fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/test/admin_panel_test.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/admin_panel_test.dart`: 6/6 passed |
 | **F29** | Active Delivery: format arrival timestamp from real `_arrivedAt` (`h:mm a`, "Not arrived yet" before arrival); replace hardcoded "Est. 12 mins" with dynamic duration derived from metered distance at 20 km/h; wrap full Order ID without ellipsis truncation (`softWrap: true`) (R25) | **FIXED** | `1cf72cb` | `fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/test/active_delivery_test.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/active_delivery_test.dart`: 6/6 passed;<br>`flutter test test/f19_layout_test.dart`: 3/3 passed at 393px width |
+| **F30** | Dynamic Hub Binding: Bind Live Shift card and Hub Fairness Index subtitle to rider's active zone hub name (KLM-PLY -> Polayathode Hub, KLM-KLK -> Kilikolloor Hub, KLM-CHK -> Chinnakada Hub) instead of hardcoded Chinnakada; update zone code badge to active zone code; add `didUpdateWidget` for dynamic updates (R20-R25) | **FIXED** | `aa1cde4` | `fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/test/f17_hub_fairness_test.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/f17_hub_fairness_test.dart`: 3/3 passed at 393px width |
 
 ---
 
@@ -127,6 +128,16 @@
    - Removed the unauthorized fallback call to `ApiService.getConfigHistory()` from `profile_screen.dart`.
    - `ApiService.getPayConfig()` already returns `{ scheduled: ... }` if an upcoming scheduled change exists and is fully authorized for riders (FR-48/FR-75). If `configData['scheduled']` is null, there is simply no upcoming change.
    - Pre-declared test update in `fairdrop_app/test/profile_screen_test.dart` to use dynamic future timestamp, preventing midnight rollover test flakiness.
+
+### Root Cause Analysis: Dynamic Hub Binding to Current Zone (F30 / R20-R25)
+
+1. **Hardcoded Hub Subtitles & Titles**: In `fairdrop_app/lib/screens/rider_home_screen.dart`, while the top header displayed the active zone code (e.g. `KLM-PLY`), the Live Shift card was hardcoded to `'Live Shift • Chinnakada Hub'` and the Hub Fairness Index card subtitle was hardcoded to `'Chinnakada & Asramam'`.
+2. **Remediation**:
+   - Added `_currentHubName` getter mapping active zone strings to their canonical hub names (`KLM-PLY` -> `Polayathode Hub`, `KLM-KLK` -> `Kilikolloor Hub`, `KLM-CHK` -> `Chinnakada Hub`).
+   - Added `_currentZoneCode` getter mapping active zone strings to short codes (`KLM-PLY`, `KLM-KLK`, `KLM-CHK`).
+   - Dynamically bound the top header badge to `_currentZoneCode`, the Live Shift card title to `_currentHubName`, and the Hub Fairness Index card to `_currentHubName`.
+   - Added `didUpdateWidget` and `initialZone` / `autoFetch` support in `RiderHomeScreen` for instant dynamic zone updates and deterministic testing without timer leaks.
+   - Added widget test in `fairdrop_app/test/f17_hub_fairness_test.dart` verifying all 3 zones dynamically update hub names and zone codes at 393px mobile width.
 
 ---
 

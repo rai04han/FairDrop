@@ -22,7 +22,14 @@ import '../services/api_service.dart';
 
 class RiderHomeScreen extends StatefulWidget {
   final String? initialError;
-  const RiderHomeScreen({super.key, this.initialError});
+  final String? initialZone;
+  final bool autoFetch;
+  const RiderHomeScreen({
+    super.key,
+    this.initialError,
+    this.initialZone,
+    this.autoFetch = true,
+  });
 
   @override
   State<RiderHomeScreen> createState() => _RiderHomeScreenState();
@@ -44,6 +51,34 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   int _floorWindowMinutes = 60;
   int _deliveriesToday = 0;
   String _currentZone = 'Chinnakada & Asramam (KL-02)';
+
+  String get _currentHubName {
+    final zone = _currentZone.toUpperCase();
+    if (zone.contains('PLY') || zone.contains('POLAYATHODE')) {
+      return 'Polayathode Hub';
+    } else if (zone.contains('KLK') || zone.contains('KILIKOLLOOR')) {
+      return 'Kilikolloor Hub';
+    } else if (zone.contains('CHK') || zone.contains('CHINNAKADA') || zone.contains('CHINNAKKADA')) {
+      return 'Chinnakada Hub';
+    }
+    if (zone.contains('HUB')) {
+      return _currentZone;
+    }
+    return '$_currentZone Hub';
+  }
+
+  String get _currentZoneCode {
+    final zone = _currentZone.toUpperCase();
+    if (zone.contains('KLM-PLY')) return 'KLM-PLY';
+    if (zone.contains('KLM-KLK')) return 'KLM-KLK';
+    if (zone.contains('KLM-CHK')) return 'KLM-CHK';
+    if (_currentZone.contains('(') && _currentZone.contains(')')) {
+      final start = _currentZone.indexOf('(') + 1;
+      final end = _currentZone.indexOf(')');
+      return _currentZone.substring(start, end);
+    }
+    return _currentZone;
+  }
 
   // Split ledger components today
   double _baseDistancePayToday = 0.0;
@@ -75,14 +110,29 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     return fallback;
   }
 
-  @override
+    @override
   void initState() {
     super.initState();
     if (widget.initialError != null) {
       _homeDataError = widget.initialError;
     }
-    _loadStats();
-    _startPolling();
+    if (widget.initialZone != null) {
+      _currentZone = widget.initialZone!;
+    }
+    if (widget.autoFetch) {
+      _loadStats();
+      _startPolling();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant RiderHomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialZone != null && widget.initialZone != oldWidget.initialZone) {
+      setState(() {
+        _currentZone = widget.initialZone!;
+      });
+    }
   }
 
   @override
@@ -171,7 +221,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _todayEarnings = (stats['total_earnings_today'] as num?)?.toDouble() ?? 0.0;
           _activeHoursToday = (stats['active_hours_today'] as num?)?.toDouble() ?? 0.0;
           _deliveriesToday = (stats['deliveries_today'] as num?)?.toInt() ?? 0;
-          _currentZone = stats['current_zone'] as String? ?? 'Chinnakada & Asramam (KL-02)';
+          _currentZone = stats['current_zone'] as String? ?? _currentZone;
           _hourlyRate = (stats['hourly_rate'] as num?)?.toDouble() ??
               (_activeHoursToday > 0 ? _todayEarnings / _activeHoursToday : 0.0);
           _floorValue = double.tryParse(config['min_wage_per_hour']?.toString() ?? '');
@@ -451,7 +501,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                 const Icon(Icons.map_rounded, size: 10, color: FairDropColors.brandGreen),
                                 const SizedBox(width: 3),
                                 Text(
-                                  'KL-02',
+                                  _currentZoneCode,
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
@@ -580,7 +630,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  _isOnline ? 'Live Shift • Chinnakada Hub' : 'Shift Offline • Tap to go online',
+                  _isOnline ? 'Live Shift • $_currentHubName' : 'Shift Offline • Tap to go online',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -1668,7 +1718,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                   ),
                             const SizedBox(height: 2),
                             Text(
-                              'Chinnakada & Asramam',
+                              _currentHubName,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w500,
