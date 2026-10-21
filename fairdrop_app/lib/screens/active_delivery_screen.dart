@@ -813,9 +813,9 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                           ),
                                         ),
                                         Text(
-                                          _elapsedWaitMins >= 1
-                                              ? 'Wait compensation active: +${formatCurrency(_elapsedWaitMins * 2.0)} (whole-min ceiling per FR-18/D10)'
-                                              : 'Wait threshold: 1 min. ₹2.00/min compensation starts after 1 min.',
+                                          _elapsedWaitSeconds > (_waitThresholdMins * 60)
+                                              ? 'Wait compensation active: +${formatCurrency(_waitCompensation)} flat bonus'
+                                              : 'Wait threshold: ${_waitThresholdMins}m. Flat +${formatCurrency(_waitCompensation)} bonus applies after ${_waitThresholdMins}m.',
                                           style: GoogleFonts.plusJakartaSans(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w500,

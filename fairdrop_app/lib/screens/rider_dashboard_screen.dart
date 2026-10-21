@@ -481,7 +481,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                       ),
                     ),
                     Text(
-                      'FairDrop linear pay vs industry cliff bonus models',
+                      'FairDrop linear pay vs industry tiered incentive ladders',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         color: FairDropColors.slateMuted,
@@ -494,7 +494,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            'Explore cumulative earnings trajectories, explicit cliff model assumptions (FR-35), and the balanced-framing cliff-wins scenario (FR-36).',
+            'Explore cumulative earnings trajectories, stated model parameters (FR-35), and benchmark parity conditions (FR-36).',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 12,
               height: 1.4,
@@ -506,7 +506,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
             key: const Key('btn_open_analytics'),
             onPressed: () => _navigateTo('/analytics'),
             icon: const Icon(Icons.insights_rounded, size: 18),
-            label: const Text('Open Analytics & Cliff Comparison →'),
+            label: const Text('Open Analytics & Incentive Comparison →'),
             style: ElevatedButton.styleFrom(
               backgroundColor: FairDropColors.brandNavy,
               foregroundColor: Colors.white,
