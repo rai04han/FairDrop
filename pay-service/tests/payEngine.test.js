@@ -56,6 +56,7 @@ describe('Pure Pay Engine Unit Tests (payEngine.js)', () => {
     WAIT_THRESHOLD_MINS: 1, // Demo threshold
     WAIT_COMPENSATION: 10,
     MIN_WAGE_PER_HOUR: 70,
+    INCENTIVE_PER_ORDER: 17.04,
   };
 
   test('validateRequest throws on missing required fields or invalid order_id', () => {
@@ -152,15 +153,16 @@ describe('Pure Pay Engine Unit Tests (payEngine.js)', () => {
 
     const result = calculatePay(request, mockConfig, 0);
 
-    // base_rate = 15, distance_pay = 3 * 6 = 18 -> total_delivery_pay = 33
-    // Under AUDIT-F16: per-delivery ledger has 6 lines; floor top-up is 0.00 inside delivery ledger
+    // base_rate = 15, distance_pay = 3 * 6 = 18, fairdrop_incentive = 17.04 -> total_delivery_pay = 50.04
+    // 7-line delivery ledger per FR-21
     assert.strictEqual(result.base_rate, 15);
     assert.strictEqual(result.distance_pay, 18);
     assert.strictEqual(result.surge_bonus, 0);
     assert.strictEqual(result.wait_compensation, 0);
-    assert.strictEqual(result.total_delivery_pay, 33);
+    assert.strictEqual(result.fairdrop_incentive, 17.04);
+    assert.strictEqual(result.total_delivery_pay, 50.04);
     assert.strictEqual(result.floor_topup, 0);
-    assert.strictEqual(result.hourly_earnings_so_far, 33);
+    assert.strictEqual(result.hourly_earnings_so_far, 50.04);
   });
 
   test('calculatePay adds surge bonus and wait compensation when triggered', () => {
@@ -176,15 +178,15 @@ describe('Pure Pay Engine Unit Tests (payEngine.js)', () => {
 
     const result = calculatePay(request, mockConfig, 50);
 
-    // base = 15, distance = 2 * 6 = 12, surge = 20, wait = 10 -> total_delivery_pay = 57
-    // Under AUDIT-F16: floor_topup is 0 inside delivery ledger
+    // base = 15, distance = 2 * 6 = 12, surge = 20, wait = 10, incentive = 17.04 -> total_delivery_pay = 74.04
     assert.strictEqual(result.base_rate, 15);
     assert.strictEqual(result.distance_pay, 12);
     assert.strictEqual(result.surge_bonus, 20);
     assert.strictEqual(result.wait_compensation, 10);
-    assert.strictEqual(result.total_delivery_pay, 57);
+    assert.strictEqual(result.fairdrop_incentive, 17.04);
+    assert.strictEqual(result.total_delivery_pay, 74.04);
     assert.strictEqual(result.floor_topup, 0);
-    assert.strictEqual(result.hourly_earnings_so_far, 214);
+    assert.strictEqual(result.hourly_earnings_so_far, 248.08);
   });
 });
 
@@ -331,7 +333,8 @@ describe('POST /api/pay/calculate Idempotency & Rider Upsert (FR-74)', () => {
     assert.strictEqual(data.base_rate, 15);
     assert.strictEqual(data.distance_pay, 15); // 2.5 * 6
     assert.strictEqual(data.wait_compensation, 10); // 2 min > 1 min seed threshold
-    assert.strictEqual(data.total_delivery_pay, 40);
+    assert.strictEqual(data.fairdrop_incentive, 17.04);
+    assert.strictEqual(data.total_delivery_pay, 57.04);
 
     // Verify rider now exists in MySQL
     const [riders] = await pool.execute('SELECT rider_id FROM riders WHERE rider_id = ?', [
@@ -355,7 +358,8 @@ describe('POST /api/pay/calculate Idempotency & Rider Upsert (FR-74)', () => {
     const data = await res.json();
     assert.strictEqual(data.order_id, testOrderId);
     assert.strictEqual(data.is_cached, true);
-    assert.strictEqual(data.total_delivery_pay, 40);
+    assert.strictEqual(data.fairdrop_incentive, 17.04);
+    assert.strictEqual(data.total_delivery_pay, 57.04);
 
     // Verify delivery table still has only 1 record
     const [deliveries] = await pool.execute(

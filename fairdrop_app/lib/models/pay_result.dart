@@ -25,6 +25,7 @@ class PayResult {
   final double distancePay;
   final double surgeBonus;
   final double waitCompensation;
+  final double fairdropIncentive;
   final double totalDeliveryPay;
   final double floorTopup;
   final double hourlyEarningsSoFar;
@@ -36,6 +37,7 @@ class PayResult {
     required this.distancePay,
     this.surgeBonus = 0.0,
     this.waitCompensation = 0.0,
+    this.fairdropIncentive = 17.04,
     required this.totalDeliveryPay,
     this.floorTopup = 0.0,
     this.hourlyEarningsSoFar = 0.0,
@@ -52,6 +54,7 @@ class PayResult {
       distancePay: (json['distance_pay'] as num?)?.toDouble() ?? 0.0,
       surgeBonus: (json['surge_bonus'] as num?)?.toDouble() ?? 0.0,
       waitCompensation: (json['wait_compensation'] as num?)?.toDouble() ?? 0.0,
+      fairdropIncentive: (json['fairdrop_incentive'] as num?)?.toDouble() ?? 17.04,
       totalDeliveryPay: (json['total_delivery_pay'] as num?)?.toDouble() ?? 0.0,
       floorTopup: (json['floor_topup'] as num?)?.toDouble() ?? 0.0,
       hourlyEarningsSoFar: (json['hourly_earnings_so_far'] as num?)?.toDouble() ?? 0.0,
@@ -66,6 +69,7 @@ class PayResult {
       'distance_pay': distancePay,
       'surge_bonus': surgeBonus,
       'wait_compensation': waitCompensation,
+      'fairdrop_incentive': fairdropIncentive,
       'total_delivery_pay': totalDeliveryPay,
       'floor_topup': floorTopup,
       'hourly_earnings_so_far': hourlyEarningsSoFar,
@@ -86,6 +90,7 @@ class PayResult {
     if (waitCompensation > 0) {
       list.add(PayLineItem(label: 'Wait Compensation', amount: waitCompensation));
     }
+    list.add(PayLineItem(label: 'FairDrop Incentive', amount: fairdropIncentive));
     if (floorTopup > 0) {
       list.add(
         PayLineItem(
@@ -95,6 +100,14 @@ class PayResult {
         ),
       );
     }
+
+    list.add(
+      PayLineItem(
+        label: 'Total Delivery Pay',
+        amount: totalDeliveryPay,
+        isHighlight: true,
+      ),
+    );
 
     list.add(
       PayLineItem(

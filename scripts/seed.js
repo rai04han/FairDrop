@@ -171,6 +171,18 @@ async function seed() {
     // Ignore if table does not exist yet or already altered
   }
 
+  // Ensure new pay-config and earnings incentive columns exist (F24)
+  try {
+    await mysqlRootConn.query(`
+      ALTER TABLE pay_configs ADD COLUMN incentive_per_order DECIMAL(10,2) NOT NULL DEFAULT 17.04 AFTER min_wage_per_hour
+    `);
+  } catch (_) {}
+  try {
+    await mysqlRootConn.query(`
+      ALTER TABLE earnings ADD COLUMN fairdrop_incentive DECIMAL(10,2) NOT NULL DEFAULT 17.04 AFTER wait_compensation
+    `);
+  } catch (_) {}
+
   // Clear existing MySQL data for clean baseline
   await mysqlRootConn.query('DELETE FROM floor_topups');
   await mysqlRootConn.query('DELETE FROM earnings');
@@ -187,6 +199,7 @@ async function seed() {
     wait_threshold_mins: 1, // PRD §10.1 Demo Seed: 1 minute!
     wait_compensation: 10.00,
     min_wage_per_hour: 70.00,
+    incentive_per_order: 17.04,
     floor_window_minutes: 60,
     effective_from: new Date().toISOString().split('T')[0],
     is_active: true,
@@ -196,8 +209,8 @@ async function seed() {
 
   const [configResult] = await mysqlRootConn.execute(
     `INSERT INTO pay_configs
-      (base_rate, per_km_rate, surge_bonus, wait_threshold_mins, wait_compensation, min_wage_per_hour, floor_window_minutes, effective_from, is_active, created_by, change_reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (base_rate, per_km_rate, surge_bonus, wait_threshold_mins, wait_compensation, min_wage_per_hour, incentive_per_order, floor_window_minutes, effective_from, is_active, created_by, change_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       baselineConfig.base_rate,
       baselineConfig.per_km_rate,
@@ -205,6 +218,7 @@ async function seed() {
       baselineConfig.wait_threshold_mins,
       baselineConfig.wait_compensation,
       baselineConfig.min_wage_per_hour,
+      baselineConfig.incentive_per_order,
       baselineConfig.floor_window_minutes,
       baselineConfig.effective_from,
       baselineConfig.is_active,

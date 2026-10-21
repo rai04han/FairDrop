@@ -571,7 +571,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            'Tap any delivery to expand the full 6-itemized ledger breakdown (FR-31)',
+            'Tap any delivery to expand the full 7-itemized ledger breakdown (FR-31)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: FairDropColors.slateMuted,
@@ -609,6 +609,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     final distancePay = double.tryParse(item['distance_pay']?.toString() ?? '0') ?? 0.0;
     final surgeBonus = double.tryParse(item['surge_bonus']?.toString() ?? '0') ?? 0.0;
     final waitComp = double.tryParse(item['wait_compensation']?.toString() ?? '0') ?? 0.0;
+    final fairdropIncentive = double.tryParse(item['fairdrop_incentive']?.toString() ?? '17.04') ?? 17.04;
     final deliveryPay = double.tryParse(item['total_delivery_pay']?.toString() ?? '0') ?? 0.0;
     final hourlySoFar = double.tryParse(item['hourly_earnings_so_far']?.toString() ?? '0') ?? 0.0;
     final totalPay = deliveryPay;
@@ -783,19 +784,27 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                     color: FairDropColors.payWait,
                   ),
 
-                  // 5. Total Delivery Pay
+                  // 5. FairDrop Incentive
+                  _buildBreakdownRow(
+                    key: Key('breakdown_fairdrop_incentive_$orderId'),
+                    label: '5. FairDrop Per-Order Incentive',
+                    value: '₹${fairdropIncentive.toStringAsFixed(2)}',
+                    color: FairDropColors.brandGreen,
+                  ),
+
+                  // 6. Total Delivery Pay
                   _buildBreakdownRow(
                     key: Key('breakdown_total_pay_$orderId'),
-                    label: '5. Net Total Delivery Payout',
+                    label: '6. Net Total Delivery Payout',
                     value: '₹${totalPay.toStringAsFixed(2)}',
                     color: FairDropColors.brandNavy,
                     isBold: true,
                   ),
 
-                  // 6. Hourly Rate So Far
+                  // 7. Hourly Rate So Far
                   _buildBreakdownRow(
                     key: Key('breakdown_hourly_rate_$orderId'),
-                    label: '6. Cumulative Hourly Rate So Far',
+                    label: '7. Cumulative Hourly Rate So Far',
                     value: hourlySoFar > 0 ? '₹${hourlySoFar.toStringAsFixed(1)}/hr' : '—',
                     color: FairDropColors.brandGreen,
                     isBold: true,

@@ -54,6 +54,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   double _perKmRate = 6.0;
   double _waitCompensation = 10.0;
   int _waitThresholdMins = 1;
+  double _configIncentivePerOrder = 17.04;
 
   static const _stepLabels = [
     '1. Heading',
@@ -123,6 +124,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
           _perKmRate = double.tryParse(config['per_km_rate']?.toString() ?? '') ?? 6.0;
           _waitCompensation = double.tryParse(config['wait_compensation']?.toString() ?? '') ?? 10.0;
           _waitThresholdMins = int.tryParse(config['wait_threshold_mins']?.toString() ?? '') ?? 1;
+          _configIncentivePerOrder = double.tryParse(config['incentive_per_order']?.toString() ?? '') ?? 17.04;
         });
       }
     } catch (_) {}
@@ -202,7 +204,12 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   double get _waitPay =>
       _elapsedWaitSeconds > (_waitThresholdMins * 60) ? _waitCompensation : 0.0;
 
-  double get _totalMeterPay => _effectiveBaseRate + _distancePay + _waitPay;
+  double get _incentivePerOrder =>
+      (_order?['incentive_per_order'] as num?)?.toDouble() ??
+      (_order?['fairdrop_incentive'] as num?)?.toDouble() ??
+      _configIncentivePerOrder;
+
+  double get _totalMeterPay => _effectiveBaseRate + _distancePay + _waitPay + _incentivePerOrder;
 
   Future<void> _advanceStep() async {
     if (_currentStep >= 3) return;
@@ -1049,7 +1056,9 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                               const SizedBox(width: 4),
                               Flexible(child: _buildBarLegend('Distance', FairDropColors.brandGreen)),
                               const SizedBox(width: 4),
-                              Flexible(child: _buildBarLegend('Wait Compensation', FairDropColors.payWait)),
+                              Flexible(child: _buildBarLegend('Wait', FairDropColors.payWait)),
+                              const SizedBox(width: 4),
+                              Flexible(child: _buildBarLegend('Incentive', FairDropColors.brandGreenDark)),
                             ],
                           ),
                           const SizedBox(height: 16),

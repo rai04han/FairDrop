@@ -40,6 +40,7 @@ CREATE TABLE pay_configs (
     wait_threshold_mins INT             NOT NULL DEFAULT 10,
     wait_compensation   DECIMAL(10,2)   NOT NULL DEFAULT 10.00,
     min_wage_per_hour   DECIMAL(10,2)   NOT NULL DEFAULT 70.00,
+    incentive_per_order DECIMAL(10,2)   NOT NULL DEFAULT 17.04,
     floor_window_minutes INT            NOT NULL DEFAULT 60,
     effective_from      DATE            NOT NULL,
     is_active           BOOLEAN         NOT NULL DEFAULT FALSE,
@@ -53,10 +54,12 @@ CREATE TABLE pay_configs (
 INSERT INTO pay_configs (
     base_rate, per_km_rate, surge_bonus,
     wait_threshold_mins, wait_compensation, min_wage_per_hour,
+    incentive_per_order,
     effective_from, is_active, created_by, change_reason
 ) VALUES (
     15.00, 6.00, 20.00,
     10, 10.00, 70.00,
+    17.04,
     CURDATE(), TRUE, 'system', 'Initial Kerala baseline configuration'
 );
 
@@ -100,6 +103,7 @@ CREATE TABLE earnings (
     distance_pay            DECIMAL(10,2)   NOT NULL,
     surge_bonus             DECIMAL(10,2)   NOT NULL DEFAULT 0.00,
     wait_compensation       DECIMAL(10,2)   NOT NULL DEFAULT 0.00,
+    fairdrop_incentive      DECIMAL(10,2)   NOT NULL DEFAULT 17.04,
     total_delivery_pay      DECIMAL(10,2)   NOT NULL,
     floor_topup             DECIMAL(10,2)   NOT NULL DEFAULT 0.00,
     hourly_earnings_so_far  DECIMAL(10,2)   NOT NULL,

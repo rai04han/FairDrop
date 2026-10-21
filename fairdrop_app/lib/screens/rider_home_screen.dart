@@ -49,6 +49,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   double _waitPayToday = 0.0;
   double _surgePayToday = 0.0;
   double _floorTopupToday = 0.0;
+  double _incentivePayToday = 0.0;
 
   // Pay config rates (default baseline Kerala parameters)
   double _baseRate = 15.0;
@@ -56,6 +57,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   double _waitCompensation = 10.0;
   int _waitThresholdMins = 10;
   double _surgeBonus = 15.0;
+  double _incentivePerOrder = 17.04;
 
   // Active incoming order (if assigned)
   Map<String, dynamic>? _incomingOrder;
@@ -176,11 +178,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _waitPayToday = (stats['wait_pay_today'] as num?)?.toDouble() ?? 0.0;
           _surgePayToday = (stats['surge_pay_today'] as num?)?.toDouble() ?? 0.0;
           _floorTopupToday = (stats['floor_topup_today'] as num?)?.toDouble() ?? 0.0;
+          _incentivePayToday = (stats['incentive_pay_today'] as num?)?.toDouble() ??
+              (stats['fairdrop_incentive_today'] as num?)?.toDouble() ?? 0.0;
           _baseRate = double.tryParse(config['base_rate']?.toString() ?? '') ?? 15.0;
           _perKmRate = double.tryParse(config['per_km_rate']?.toString() ?? '') ?? 6.0;
           _waitCompensation = double.tryParse(config['wait_compensation']?.toString() ?? '') ?? 10.0;
           _waitThresholdMins = int.tryParse(config['wait_threshold_mins']?.toString() ?? '') ?? 10;
           _surgeBonus = double.tryParse(config['surge_bonus']?.toString() ?? '') ?? 15.0;
+          _incentivePerOrder = double.tryParse(config['incentive_per_order']?.toString() ?? '') ?? 17.04;
           _scheduledConfig = configData['scheduled'] as Map<String, dynamic>?;
         });
       }
@@ -803,6 +808,15 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           ),
           const SizedBox(height: 8),
           _buildFormulaRow(
+            color: FairDropColors.brandGreen,
+            title: 'FairDrop Incentive',
+            subtitle: _deliveriesToday > 0
+                ? '$_deliveriesToday ${_deliveriesToday == 1 ? "drop" : "drops"} @ ₹${_incentivePerOrder.toStringAsFixed(2)} guaranteed per-order incentive'
+                : '₹${_incentivePerOrder.toStringAsFixed(2)} guaranteed incentive per completed delivery',
+            amount: _incentivePayToday > 0 ? '₹${_incentivePayToday.toStringAsFixed(2)}' : '₹0.00',
+          ),
+          const SizedBox(height: 8),
+          _buildFormulaRow(
             color: FairDropColors.payGuarantee,
             title: 'Kerala Fair Pay Top-Up',
             subtitle: _floorValue != null
@@ -1097,9 +1111,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     final distancePay = (order['distance_pay'] as num?)?.toDouble() ?? (distanceKm * _perKmRate);
     final surgePay = isSurge ? ((order['surge_bonus'] as num?)?.toDouble() ?? _surgeBonus) : 0.0;
     final calcResult = order['pay_calculation_result'] as Map<String, dynamic>?;
-    final guaranteedPayout = (calcResult?['guaranteed_payout'] as num?)?.toDouble() ??
+    final incentivePay = (calcResult?['fairdrop_incentive'] as num?)?.toDouble() ??
+        (order['fairdrop_incentive'] as num?)?.toDouble() ??
+        _incentivePerOrder;
+    final estimatedPayout = (calcResult?['total_delivery_pay'] as num?)?.toDouble() ??
+        (calcResult?['guaranteed_payout'] as num?)?.toDouble() ??
+        (order['estimated_payout'] as num?)?.toDouble() ??
         (order['guaranteed_payout'] as num?)?.toDouble() ??
-        (basePay + distancePay + surgePay);
+        (basePay + distancePay + surgePay + incentivePay);
 
     final pickupAddress = _extractAddress(
       order['restaurant_address'],
@@ -1198,7 +1217,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'GROSS GUARANTEED PAYOUT',
+                          'Estimated payout',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
@@ -1207,7 +1226,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                           ),
                         ),
                         Text(
-                          '₹${guaranteedPayout.toStringAsFixed(0)}',
+                          '₹${estimatedPayout.toStringAsFixed(0)}',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 28,
                             fontWeight: FontWeight.w900,
@@ -1265,6 +1284,8 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                         const SizedBox(height: 5),
                         _buildLedgerItem('Monsoon Coastal Surge', '₹${surgePay.toStringAsFixed(0)}', FairDropColors.paySurge),
                       ],
+                      const SizedBox(height: 5),
+                      _buildLedgerItem('FairDrop Incentive', '+₹${incentivePay.toStringAsFixed(2)} FairDrop incentive', FairDropColors.brandGreen),
                       const SizedBox(height: 5),
                       _buildLedgerItem('Wait Guarantee (if >${_waitThresholdMins}m)', '+₹${_waitCompensation.toStringAsFixed(0)} flat', FairDropColors.payWait),
                     ],
@@ -1405,7 +1426,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             ),
             icon: const Icon(Icons.check_circle_outline, size: 20),
             label: Text(
-              'Accept Order (₹${guaranteedPayout.toStringAsFixed(0)} Guaranteed)',
+              'Accept Order (₹${estimatedPayout.toStringAsFixed(0)})',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -1888,6 +1909,12 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                         title: 'Monsoon Severe Weather Surge',
                         value: '₹${_surgeBonus.toStringAsFixed(2)} per order',
                         desc: 'Direct bonus during declared extreme weather conditions',
+                      ),
+                      const Divider(height: 16, color: FairDropColors.mintBorder),
+                      _buildModalFormulaRow(
+                        title: 'FairDrop Per-Order Incentive',
+                        value: '₹${_incentivePerOrder.toStringAsFixed(2)} per order',
+                        desc: 'Direct platform incentive added to every completed delivery',
                       ),
                       const Divider(height: 16, color: FairDropColors.mintBorder),
                       _buildModalFormulaRow(

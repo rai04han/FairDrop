@@ -197,9 +197,13 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
     return double.tryParse(_payConfig?['min_wage_per_hour']?.toString() ?? '') ?? 0.0;
   }
 
+  double get _incentivePerOrder {
+    return double.tryParse(_payConfig?['incentive_per_order']?.toString() ?? '') ?? 17.04;
+  }
+
   double get _distancePay => _distanceKm * _perKmRate;
 
-  double get _estimatedTotal => _baseRate + _distancePay + _surgeBonus;
+  double get _estimatedTotal => _baseRate + _distancePay + _surgeBonus + _incentivePerOrder;
 
   bool get _isOutOfZone => _orderModel?.isOutOfZone ?? (_order?['is_out_of_zone'] as bool?) ?? false;
 
@@ -748,7 +752,7 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
-                                  'GUARANTEED',
+                                  'ESTIMATED',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
@@ -791,8 +795,15 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                               color: FairDropColors.paySurge,
                               isSurge: true,
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 10),
                           ],
+                          _buildPayLineItem(
+                            label: 'FairDrop incentive',
+                            desc: 'Guaranteed platform incentive',
+                            amount: formatCurrency(_incentivePerOrder),
+                            color: FairDropColors.brandGreen,
+                          ),
+                          const SizedBox(height: 12),
 
                           // Proportion Bar Visualizer
                           ClipRRect(
@@ -814,6 +825,10 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                                       flex: (_surgeBonus * 10).round().clamp(1, 100),
                                       child: Container(color: FairDropColors.paySurge),
                                     ),
+                                  Expanded(
+                                    flex: (_incentivePerOrder * 10).round().clamp(1, 100),
+                                    child: Container(color: FairDropColors.brandGreen),
+                                  ),
                                 ],
                               ),
                             ),
@@ -835,7 +850,7 @@ class _OrderAcceptanceScreenState extends State<OrderAcceptanceScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'GUARANTEED PAYOUT',
+                                        'ESTIMATED PAYOUT',
                                         style: GoogleFonts.plusJakartaSans(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w800,

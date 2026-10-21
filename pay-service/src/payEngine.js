@@ -115,15 +115,20 @@ function calculatePay(req, config, cumulativeEarningsBeforeThisDelivery = 0) {
   const wait_compensation =
     restaurant_wait_mins > WAIT_THRESHOLD_MINS ? WAIT_COMPENSATION : 0;
 
+  const fairdrop_incentive = round2(
+    config.INCENTIVE_PER_ORDER !== undefined
+      ? Number(config.INCENTIVE_PER_ORDER)
+      : (config.incentive_per_order !== undefined ? Number(config.incentive_per_order) : 17.04)
+  );
+
   const total_delivery_pay = round2(
-    base_rate + distance_pay + surge_bonus + wait_compensation
+    base_rate + distance_pay + surge_bonus + wait_compensation + fairdrop_incentive
   );
 
   // ── Floor top-up (AUDIT-F16 Redesign) ─────────────────────────────────────
   // Per AUDIT-F16, the statutory floor (config MIN_WAGE_PER_HOUR) is evaluated
   // only per completed 60-minute block of engaged time, NOT inside an individual
-  // delivery's ledger. The per-delivery ledger goes from 7 lines to 6.
-  // Delivery ledger floor_topup is 0.00.
+  // delivery's ledger.
   const floor_topup = 0.00;
 
   const cumulativeAfter = round2(cumulativeEarningsBeforeThisDelivery + total_delivery_pay);
@@ -138,6 +143,7 @@ function calculatePay(req, config, cumulativeEarningsBeforeThisDelivery = 0) {
     distance_pay,
     surge_bonus,
     wait_compensation,
+    fairdrop_incentive,
     total_delivery_pay,
     floor_topup,
     hourly_earnings_so_far,
@@ -191,7 +197,8 @@ function evaluateFloorBlocks(orders, options = {}) {
           Number(order.base_rate || 0) +
           Number(order.distance_pay || 0) +
           Number(order.surge_bonus || 0) +
-          Number(order.wait_compensation || 0)
+          Number(order.wait_compensation || 0) +
+          Number(order.fairdrop_incentive || 0)
         );
 
     taggedOrders.push({

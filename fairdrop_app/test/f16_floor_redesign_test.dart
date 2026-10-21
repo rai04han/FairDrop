@@ -55,11 +55,12 @@ void main() {
       // Verify no overflow
       expect(tester.takeException(), isNull);
 
-      // Verify 6 ledger lines exist
+      // Verify 7 ledger lines exist
       expect(find.text('Base Rate'), findsOneWidget);
       expect(find.text('Distance Pay'), findsOneWidget);
       expect(find.text('Surge Bonus'), findsOneWidget);
       expect(find.text('Wait Compensation'), findsOneWidget);
+      expect(find.text('FairDrop Incentive'), findsOneWidget);
       expect(find.text('Total Delivery Pay'), findsOneWidget);
       expect(find.text('Effective Hourly Rate So Far'), findsOneWidget);
 
@@ -111,12 +112,13 @@ void main() {
       // Verify no overflow
       expect(tester.takeException(), isNull);
 
-      // Verify 6 itemized rows in expanded tile
+      // Verify 7 itemized rows in expanded tile
       const orderId = 'ORD-20261020-0033';
       expect(find.byKey(const Key('breakdown_base_rate_$orderId')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_distance_pay_$orderId')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_surge_bonus_$orderId')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_wait_compensation_$orderId')), findsOneWidget);
+      expect(find.byKey(const Key('breakdown_fairdrop_incentive_$orderId')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_total_pay_$orderId')), findsOneWidget);
       expect(find.byKey(const Key('breakdown_hourly_rate_$orderId')), findsOneWidget);
 

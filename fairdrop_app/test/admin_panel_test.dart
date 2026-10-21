@@ -23,6 +23,7 @@ void main() {
     'wait_threshold_mins': 5,
     'wait_compensation': 2.00,
     'min_wage_per_hour': 70.00,
+    'incentive_per_order': 17.04,
     'effective_from': '2026-01-01T00:00:00Z',
     'is_active': 1,
     'created_by': 'admin_seeder',
@@ -100,6 +101,7 @@ void main() {
       expect(find.text('₹15'), findsWidgets); // Surge
       expect(find.text('5 min'), findsWidgets); // Wait Threshold
       expect(find.text('₹2'), findsWidgets); // Wait Comp
+      expect(find.text('₹17.04'), findsWidgets); // FairDrop Incentive
       expect(find.text('₹70/hr'), findsWidgets); // Floor
       expect(find.textContaining('Baseline Kerala Gig Workers Living Wage 2026'), findsWidgets);
 

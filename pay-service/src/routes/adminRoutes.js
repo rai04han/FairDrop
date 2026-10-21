@@ -21,6 +21,7 @@ router.get('/pay-config', async (req, res) => {
     const [configs] = await pool.execute(
       `SELECT config_id, base_rate, per_km_rate, surge_bonus,
               wait_threshold_mins, wait_compensation, min_wage_per_hour,
+              incentive_per_order,
               effective_from, is_active, created_at, created_by, change_reason
        FROM pay_configs
        WHERE effective_from <= CURDATE()
@@ -54,6 +55,7 @@ router.get('/pay-config/history', async (req, res) => {
     const [history] = await pool.execute(
       `SELECT config_id, base_rate, per_km_rate, surge_bonus,
               wait_threshold_mins, wait_compensation, min_wage_per_hour,
+              incentive_per_order,
               effective_from, is_active, created_at, created_by, change_reason
        FROM pay_configs
        ORDER BY effective_from DESC, config_id DESC`

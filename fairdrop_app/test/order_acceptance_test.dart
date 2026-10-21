@@ -47,7 +47,7 @@ void main() {
       expect(find.text('Order Acceptance'), findsOneWidget);
       expect(find.text('Your pay for this order'), findsOneWidget);
       expect(find.text('Base rate'), findsOneWidget);
-      expect(find.text('GUARANTEED PAYOUT'), findsOneWidget);
+      expect(find.text('ESTIMATED PAYOUT'), findsOneWidget);
       expect(find.text('Wage Protection Active'), findsOneWidget);
 
       // Verify action buttons exist

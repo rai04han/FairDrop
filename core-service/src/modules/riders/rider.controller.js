@@ -219,6 +219,7 @@ async function getStats(req, res) {
     let distancePayToday = 0;
     let waitPayToday = 0;
     let surgePayToday = 0;
+    let incentivePayToday = 0;
 
     for (const order of deliveredOrders) {
       if (order.pay_calculation_result) {
@@ -226,16 +227,18 @@ async function getStats(req, res) {
         const dist = parseFloat(order.pay_calculation_result.distance_pay || 0);
         const wait = parseFloat(order.pay_calculation_result.wait_compensation || 0);
         const surge = parseFloat(order.pay_calculation_result.surge_bonus || 0);
+        const incentive = parseFloat(order.pay_calculation_result.fairdrop_incentive !== undefined ? order.pay_calculation_result.fairdrop_incentive : 17.04);
         const deliveryPay = parseFloat(
           order.pay_calculation_result.total_delivery_pay !== undefined
             ? order.pay_calculation_result.total_delivery_pay
-            : (base + dist + wait + surge)
+            : (base + dist + wait + surge + incentive)
         );
 
         basePayToday += base;
         distancePayToday += dist;
         waitPayToday += wait;
         surgePayToday += surge;
+        incentivePayToday += incentive;
         totalDeliveryPayToday += deliveryPay;
       }
     }
@@ -257,6 +260,7 @@ async function getStats(req, res) {
     const baseDistancePayToday = Math.round((basePayToday + distancePayToday) * 100) / 100;
     waitPayToday = Math.round(waitPayToday * 100) / 100;
     surgePayToday = Math.round(surgePayToday * 100) / 100;
+    incentivePayToday = Math.round(incentivePayToday * 100) / 100;
     floorTopupToday = Math.round(floorTopupToday * 100) / 100;
     const currentZone = profile.current_zone_code || profile.assigned_zone_code || 'KLM-CHK';
     const hourlyRate = engagedHours > 0 ? Math.round((totalEarningsToday / engagedHours) * 100) / 100 : 0;
@@ -273,6 +277,8 @@ async function getStats(req, res) {
         base_distance_pay_today: baseDistancePayToday,
         wait_pay_today: waitPayToday,
         surge_pay_today: surgePayToday,
+        incentive_pay_today: incentivePayToday,
+        fairdrop_incentive_today: incentivePayToday,
         floor_topup_today: floorTopupToday,
         current_zone: currentZone,
         current_zone_id: profile.current_zone_id || profile.zone_id || null,

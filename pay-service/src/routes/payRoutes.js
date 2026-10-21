@@ -26,7 +26,7 @@ router.get('/config', async (req, res) => {
     const [activeRows] = await pool.execute(
       `SELECT config_id, base_rate, per_km_rate, surge_bonus,
               wait_threshold_mins, wait_compensation, min_wage_per_hour,
-              floor_window_minutes,
+              incentive_per_order, floor_window_minutes,
               effective_from, is_active, created_at, created_by, change_reason
        FROM pay_configs
        WHERE effective_from <= CURDATE()
@@ -37,7 +37,7 @@ router.get('/config', async (req, res) => {
     const [scheduledRows] = await pool.execute(
       `SELECT config_id, base_rate, per_km_rate, surge_bonus,
               wait_threshold_mins, wait_compensation, min_wage_per_hour,
-              floor_window_minutes,
+              incentive_per_order, floor_window_minutes,
               effective_from, is_active, created_at, created_by, change_reason
        FROM pay_configs
        WHERE effective_from > CURDATE()
@@ -110,7 +110,7 @@ router.post('/riders', async (req, res) => {
 // Request:  rider_id, order_id, distance_km, is_surge_active,
 //           restaurant_wait_mins, active_hours_today, delay_context
 // Response: order_id, base_rate, distance_pay, surge_bonus,
-//           wait_compensation, total_delivery_pay, floor_topup,
+//           wait_compensation, fairdrop_incentive, total_delivery_pay, floor_topup,
 //           hourly_earnings_so_far
 
 router.post('/calculate', async (req, res) => {
@@ -146,7 +146,7 @@ router.post('/calculate', async (req, res) => {
     // ── Step 3: Check for duplicate order_id (idempotency per FR-74) ────
     const [existingEarnings] = await pool.execute(
       `SELECT order_id, base_rate, distance_pay, surge_bonus,
-              wait_compensation, total_delivery_pay, floor_topup,
+              wait_compensation, fairdrop_incentive, total_delivery_pay, floor_topup,
               hourly_earnings_so_far
        FROM earnings WHERE order_id = ?`,
       [order_id]
@@ -160,6 +160,7 @@ router.post('/calculate', async (req, res) => {
         distance_pay: parseFloat(e.distance_pay),
         surge_bonus: parseFloat(e.surge_bonus),
         wait_compensation: parseFloat(e.wait_compensation),
+        fairdrop_incentive: parseFloat(e.fairdrop_incentive !== undefined ? e.fairdrop_incentive : 17.04),
         total_delivery_pay: parseFloat(e.total_delivery_pay),
         floor_topup: parseFloat(e.floor_topup),
         hourly_earnings_so_far: parseFloat(e.hourly_earnings_so_far),
@@ -191,6 +192,7 @@ router.post('/calculate', async (req, res) => {
       WAIT_THRESHOLD_MINS: activeConfig.wait_threshold_mins,
       WAIT_COMPENSATION: parseFloat(activeConfig.wait_compensation),
       MIN_WAGE_PER_HOUR: parseFloat(activeConfig.min_wage_per_hour),
+      INCENTIVE_PER_ORDER: parseFloat(activeConfig.incentive_per_order !== undefined ? activeConfig.incentive_per_order : 17.04),
     };
 
     // ── Step 5: Get today's cumulative earnings for this rider ──────────
@@ -207,7 +209,7 @@ router.post('/calculate', async (req, res) => {
 
     // ── Step 6: Calculate pay using the pure engine ─────────────────────
     // This is the core academic contribution — linear model with
-    // surge, wait compensation. Floor top-up is evaluated in completed blocks (AUDIT-F16).
+    // surge, wait compensation, and per-order incentive. Floor top-up is evaluated in completed blocks (AUDIT-F16).
     const payResult = calculatePay(req.body, payConfig, cumulativeEarningsBeforeThisDelivery);
 
     // Compute engaged minutes for this delivery
@@ -251,9 +253,9 @@ router.post('/calculate', async (req, res) => {
     await pool.execute(
       `INSERT INTO earnings
          (delivery_id, order_id, rider_id, base_rate, distance_pay,
-          surge_bonus, wait_compensation, total_delivery_pay,
+          surge_bonus, wait_compensation, fairdrop_incentive, total_delivery_pay,
           floor_topup, hourly_earnings_so_far)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         deliveryId,
         order_id,
@@ -262,6 +264,7 @@ router.post('/calculate', async (req, res) => {
         payResult.distance_pay,
         payResult.surge_bonus,
         payResult.wait_compensation,
+        payResult.fairdrop_incentive,
         payResult.total_delivery_pay,
         payResult.floor_topup,
         payResult.hourly_earnings_so_far,
@@ -275,7 +278,7 @@ router.post('/calculate', async (req, res) => {
 
     const [allDeliveriesToday] = await pool.execute(
       `SELECT d.order_id, d.engaged_minutes, d.created_at,
-              e.total_delivery_pay, e.base_rate, e.distance_pay, e.surge_bonus, e.wait_compensation
+              e.total_delivery_pay, e.base_rate, e.distance_pay, e.surge_bonus, e.wait_compensation, e.fairdrop_incentive
        FROM deliveries d
        JOIN earnings e ON d.delivery_id = e.delivery_id
        WHERE d.rider_id = ? AND DATE(d.created_at) = CURDATE()
@@ -406,6 +409,7 @@ router.get('/history/:rider_id', async (req, res) => {
          e.distance_pay,
          e.surge_bonus,
          e.wait_compensation,
+         e.fairdrop_incentive,
          e.total_delivery_pay,
          e.floor_topup,
          e.hourly_earnings_so_far,

@@ -34,6 +34,7 @@
 | **F21** | Analytics wording follow-up: explicit cost-neutrality at top Zomato tier (27 orders) and platform extra cost capped at 27 orders; parity summary & policy notes updated; 393px layout fix (R6) | **FIXED** | `b12ae8a` | `fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `flutter analyze`: No issues found;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Dedicated 393px mobile width test passing with 0 layout exceptions |
 | **F22** | Canonical delay flow enums (`traffic`, `weather`, `restaurant`, `customer`, `other`; `rider_report`, `ops_dispatch`, `system_detection`) and delivery failure rollback to `picked_up` (FR-19, FR-20, FR-24) | **FIXED** | `c645d26` | `core-service/src/modules/orders/order.controller.js`<br>`core-service/src/modules/orders/order.model.js`<br>`core-service/tests/orders.test.js`<br>`pay-service/src/services/payEngine.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart` | `core-service npm test`: passed;<br>`pay-service npm test`: passed;<br>Simulated pay failure maintains order at picked_up; retry succeeds |
 | **F23** | Support string menu item IDs (`item-101`, `item-102`, `item-103`) in core-service schemas, seed, and availability toggles (FR-63, FR-64) | **FIXED** | `8a67564` | `core-service/src/modules/restaurants/restaurant.model.js`<br>`core-service/src/modules/restaurants/restaurant.controller.js`<br>`core-service/tests/restaurants.test.js`<br>`scripts/seed.js` | `core-service npm test`: 78/78 passed;<br>Both seeded and newly created menu items toggle availability by string ID |
+| **F24** | FairDrop per-order incentive (`incentive_per_order` default 17.04); 7-line ledger (Base, Distance, Surge, Wait, FairDrop Incentive, Total Delivery Pay, Effective Hourly Rate); updated Shift card, Offer card (+₹17.04 FairDrop incentive), Acceptance screen, Active meter, Dashboard, and Admin Active Config; rename payout labels to Estimated (R20) | **FIXED** | Pending commit | `database/mysql/schema.sql`<br>`scripts/seed.js`<br>`pay-service/src/payEngine.js`<br>`pay-service/src/routes/payRoutes.js`<br>`pay-service/src/routes/adminRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`core-service/src/modules/riders/rider.controller.js`<br>`docs/FairDrop_Flutter_App_PRD_v2.1.md`<br>`fairdrop_app/lib/models/pay_result.dart`<br>`fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/order_acceptance_screen.dart`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/test/admin_panel_test.dart`<br>`fairdrop_app/test/f16_floor_redesign_test.dart`<br>`fairdrop_app/test/order_acceptance_test.dart` | `pay-service npm test`: 33/33 passed;<br>`core-service npm test`: 78/78 passed;<br>`flutter test`: 135/135 passed;<br>`flutter analyze`: 0 issues;<br>**Assumption**: Floor top-up still compares block pay to the floor, with total pay now including the incentive. |
 
 ---
 
@@ -672,7 +673,35 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - **`fairdrop_app/test/analytics_dashboard_test.dart`**:
   - Added dedicated test `AnalyticsScreen renders at 393px mobile width with 0 layout exceptions (AUDIT-F21)` verifying that all parity cards, policy notes, and cost-neutrality statements render cleanly with `tester.takeException() == null`.
   - All 11 widget tests in `test/analytics_dashboard_test.dart` passing.
-- `fairdrop_app flutter analyze`: No issues found!
+---
+
+## F24: FairDrop Per-Order Incentive & 7-Line Ledger (R20)
+
+### 1. Root Causes & Findings
+- **Missing Per-Order Incentive Parameter**: The pay engine previously only calculated Base, Distance, Surge, and Wait Compensation. The FairDrop model requires an explicit platform per-order incentive (`incentive_per_order`, default ₹17.04) added to every delivery.
+- **Ledger Alignment**: PRD FR-21 previously specified a 6-line ledger. With `fairdrop_incentive`, the itemized ledger has 7 lines: Base, Distance, Surge, Wait, FairDrop Incentive, Total Delivery Pay, and Effective Hourly Rate.
+- **Terminology Updates**: Over-promising terms like "Gross Guaranteed Payout" and "Accept Order (₹X Guaranteed)" needed renaming to "Estimated payout" and "Accept Order (₹X)" across the rider experience.
+- **Assumptions**: Floor top-up still compares block pay to the floor, with total pay now including the incentive (`total_delivery_pay = base + distance + surge + wait + fairdrop_incentive`).
+
+### 2. Remediation Applied
+- **`database/mysql/schema.sql` & `scripts/seed.js`**: Added `incentive_per_order DECIMAL(10,2) NOT NULL DEFAULT 17.04` to `pay_configs` and `fairdrop_incentive DECIMAL(10,2) NOT NULL DEFAULT 17.04` to `earnings`.
+- **`pay-service/src/payEngine.js`**: Updated `calculatePay` to compute `fairdrop_incentive = incentive_per_order` and `total_delivery_pay = base + distance + surge + wait + fairdrop_incentive`.
+- **`pay-service/src/routes/payRoutes.js` & `adminRoutes.js`**: Selected `incentive_per_order` in config endpoints, inserted `fairdrop_incentive` in earnings, and selected in history.
+- **`core-service/src/modules/riders/rider.controller.js`**: Summed `incentive_pay_today` and returned in rider statistics.
+- **`fairdrop_app`**:
+  - `admin_panel_screen.dart`: Added read-only `FairDrop Incentive: ₹17.04` metric chip to Active Configuration card (not in edit form).
+  - `rider_home_screen.dart`: Added FairDrop Incentive row to Home Shift Card; added "+₹17.04 FairDrop incentive" to Offer Card; renamed payout labels to "Estimated payout" and "Accept Order (₹X)".
+  - `order_acceptance_screen.dart`: Added FairDrop incentive to itemized ledger and proportion bar; renamed labels to "ESTIMATED".
+  - `active_delivery_screen.dart`: Added FairDrop Incentive to meter calculation, proportion bar, and itemized breakdown.
+  - `rider_dashboard_screen.dart`: Added FairDrop Incentive as row 5 in 7-line expandable delivery history ledger.
+  - `pay_breakdown_screen.dart`: Updated to 7-line ledger.
+- **`docs/FairDrop_Flutter_App_PRD_v2.1.md`**: Updated FR-21 and FR-31 to 7-line delivery ledger.
+
+### 3. Verification & Test Evidence
+- `pay-service npm test`: 33/33 passed (unit and API tests verifying additive incentive and total).
+- `core-service npm test`: 78/78 passed.
+- `fairdrop_app flutter test`: 135/135 passed (including 393px width tests in `f16_floor_redesign_test.dart`).
+- `fairdrop_app flutter analyze`: No issues found.
 
 ---
 

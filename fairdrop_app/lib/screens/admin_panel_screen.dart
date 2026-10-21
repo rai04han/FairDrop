@@ -581,6 +581,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                 _buildMetricChip('Base Pay', '₹${_formatValue(_currentConfig!['base_rate'])}'),
                 _buildMetricChip('Distance', '₹${_formatValue(_currentConfig!['per_km_rate'])}/km'),
                 _buildMetricChip('Surge', '₹${_formatValue(_currentConfig!['surge_bonus'])}'),
+                _buildMetricChip('FairDrop Incentive', '₹${_formatValue(_currentConfig!['incentive_per_order'] ?? 17.04)}'),
                 _buildMetricChip('Wait Threshold', '${_currentConfig!['wait_threshold_mins']} min'),
                 _buildMetricChip('Wait Comp', '₹${_formatValue(_currentConfig!['wait_compensation'])}'),
                 _buildMetricChip('Statutory Floor', '₹${_formatValue(_currentConfig!['min_wage_per_hour'])}/hr'),

@@ -734,16 +734,24 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
           ),
           const Divider(height: 20, color: FairDropColors.mintBorder),
 
-          // 5. Total Delivery Pay (sum of the lines above: base + distance + surge + wait)
+          // 5. FairDrop Incentive (FR-21 / F24)
+          _buildLedgerLine(
+            title: 'FairDrop Incentive',
+            amount: r.fairdropIncentive,
+            subtitle: 'Guaranteed per-order incentive',
+          ),
+          const Divider(height: 20, color: FairDropColors.mintBorder),
+
+          // 6. Total Delivery Pay (sum of the lines above: base + distance + surge + wait + incentive)
           _buildLedgerLine(
             title: 'Total Delivery Pay',
             amount: r.totalDeliveryPay,
-            subtitle: 'Base + distance + surge + wait',
+            subtitle: 'Base + distance + surge + wait + incentive',
             isBold: true,
           ),
           const Divider(height: 20, color: FairDropColors.mintBorder),
 
-          // 6. Effective Hourly Rate So Far (AUDIT-F16)
+          // 7. Effective Hourly Rate So Far (AUDIT-F16)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
