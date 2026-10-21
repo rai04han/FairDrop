@@ -41,6 +41,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
   double _activeHoursToday = 0.0;
   double _hourlyRate = 0.0;
   double? _floorValue = 70.0;
+  int _floorWindowMinutes = 60;
   int _deliveriesToday = 0;
   String _currentZone = 'Chinnakada & Asramam (KL-02)';
 
@@ -186,6 +187,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           _waitThresholdMins = int.tryParse(config['wait_threshold_mins']?.toString() ?? '') ?? 10;
           _surgeBonus = double.tryParse(config['surge_bonus']?.toString() ?? '') ?? 15.0;
           _incentivePerOrder = double.tryParse(config['incentive_per_order']?.toString() ?? '') ?? 17.04;
+          _floorWindowMinutes = int.tryParse(config['floor_window_minutes']?.toString() ?? '') ?? 60;
           _scheduledConfig = configData['scheduled'] as Map<String, dynamic>?;
         });
       }
@@ -639,7 +641,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
               Expanded(
                 child: Text(
                   _activeHoursToday > 0
-                      ? "Today's Shift • ${_activeHoursToday.toStringAsFixed(1)}h active in Kollam"
+                      ? (_activeHoursToday < 1.0
+                          ? "Today's Shift • ${(_activeHoursToday * 60).round() == 0 ? 1 : (_activeHoursToday * 60).round()} min active in Kollam"
+                          : "Today's Shift • ${_activeHoursToday.toStringAsFixed(1)}h active in Kollam")
                       : "Today's Shift • — active in Kollam",
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
@@ -758,9 +762,9 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
-                      _activeHoursToday >= 1.0 && _todayEarnings > 0 && _hourlyRate >= _floorValue!
+                      (_activeHoursToday * 60) >= _floorWindowMinutes && _deliveriesToday > 0 && _todayEarnings > 0 && _hourlyRate >= _floorValue!
                           ? 'Kerala Min Floor ₹${_floorValue!.toStringAsFixed(0)}/hr met'
-                          : 'Floor evaluated after 60 min on orders',
+                          : 'Floor evaluated after $_floorWindowMinutes min on orders',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 10,
@@ -1579,15 +1583,21 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: FairDropColors.brandGreen.withValues(alpha: 0.12),
+                        color: _deliveriesToday > 0 && (_activeHoursToday * 60) >= _floorWindowMinutes
+                            ? FairDropColors.brandGreen.withValues(alpha: 0.12)
+                            : FairDropColors.slateMuted.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        '100% Compliant',
+                        _deliveriesToday > 0 && (_activeHoursToday * 60) >= _floorWindowMinutes
+                            ? '100% Compliant'
+                            : 'Not yet evaluated',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
-                          color: FairDropColors.brandGreen,
+                          color: _deliveriesToday > 0 && (_activeHoursToday * 60) >= _floorWindowMinutes
+                              ? FairDropColors.brandGreen
+                              : FairDropColors.slateMuted,
                         ),
                       ),
                     ),
@@ -1617,7 +1627,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            _activeHoursToday > 0 && _todayEarnings > 0
+                            _deliveriesToday > 0 && (_activeHoursToday * 60) >= _floorWindowMinutes && _todayEarnings > 0
                                 ? Text(
                                     '₹${_hourlyRate.toStringAsFixed(0)}/hr',
                                     style: GoogleFonts.plusJakartaSans(
@@ -1626,14 +1636,35 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                                       color: FairDropColors.brandGreen,
                                     ),
                                   )
-                                : Text(
-                                    'Not enough completed hours today',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: FairDropColors.slateMuted,
-                                      height: 1.2,
-                                    ),
+                                : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '—',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w900,
+                                          color: FairDropColors.brandGreen,
+                                        ),
+                                      ),
+                                      Text(
+                                        'after $_floorWindowMinutes engaged min',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: FairDropColors.slateMuted,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Not enough completed hours today',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: FairDropColors.slateMuted,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                             const SizedBox(height: 2),
                             Text(

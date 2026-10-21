@@ -31,6 +31,7 @@ void main() {
                   'distance_km': 1.25,
                   'restaurant_wait_mins': 3,
                   'is_surge_active': false,
+                  'has_evaluated_block': true,
                   'pay_result': mockPayResult.toJson(),
                 },
               ),
@@ -148,6 +149,47 @@ void main() {
       expect(find.text('No completed deliveries yet'), findsOneWidget);
       expect(find.text('ORD-20261019-0001'), findsNothing);
       expect(find.text('CACHED'), findsNothing);
+    });
+
+    testWidgets('renders "—" with "after 60 engaged min" when engaged time is under floor window (F27 / R23)', (tester) async {
+      final mockPayResult = PayResult(
+        orderId: 'ORD-20261019-0005',
+        baseRate: 15.00,
+        distancePay: 7.50,
+        surgeBonus: 0.00,
+        waitCompensation: 0.00,
+        totalDeliveryPay: 32.50,
+        floorTopup: 0.00,
+        hourlyEarningsSoFar: 993.33,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          onGenerateRoute: (settings) {
+            return MaterialPageRoute(
+              settings: RouteSettings(
+                arguments: {
+                  'order_id': 'ORD-20261019-0005',
+                  'distance_km': 1.25,
+                  'restaurant_wait_mins': 3,
+                  'is_surge_active': false,
+                  'has_evaluated_block': false,
+                  'pay_result': mockPayResult.toJson(),
+                },
+              ),
+              builder: (context) => const PayBreakdownScreen(),
+            );
+          },
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Verify hourly rate shows "—" and "after 60 engaged min" instead of 993.33/hr
+      expect(find.text('993.33'), findsNothing);
+      expect(find.text('—'), findsOneWidget);
+      expect(find.text('after 60 engaged min'), findsOneWidget);
+      expect(find.text('Floor evaluated after 60 min on orders'), findsOneWidget);
     });
   });
 }

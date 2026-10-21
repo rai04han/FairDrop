@@ -368,10 +368,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               Container(height: 36, width: 1, color: const Color(0xFFF1F5F9)),
                               Expanded(
                                 child: _buildMetricItem(
-                                  _engagedHoursToday > 0 ? '₹${_hourlyRate.toStringAsFixed(0)}/hr' : ' — ',
+                                  _engagedHoursToday > 0 && (_engagedHoursToday * 60) >= 60 ? '₹${_hourlyRate.toStringAsFixed(0)}/hr' : ' — ',
                                   'Avg earnings',
                                   sublabel: _engagedHoursToday > 0
-                                      ? (_floorTopupToday > 0 ? '(incl. floor top-up)' : '(excl. floor top-up)')
+                                      ? (_engagedHoursToday < 1.0 ? '${(_engagedHoursToday * 60).round() == 0 ? 1 : (_engagedHoursToday * 60).round()} min active' : (_floorTopupToday > 0 ? '(incl. floor top-up)' : '(excl. floor top-up)'))
                                       : '0 engaged hrs',
                                 ),
                               ),

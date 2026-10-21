@@ -15,12 +15,14 @@ import 'package:google_fonts/google_fonts.dart';
 import '../config/theme.dart';
 import '../models/order.dart';
 import '../models/pay_result.dart';
+import '../services/api_service.dart';
 import '../services/core_api_service.dart';
-import '../services/exceptions.dart';
+
 import '../utils/format_utils.dart';
 
 class PayBreakdownScreen extends StatefulWidget {
-  const PayBreakdownScreen({super.key});
+  final bool autoFetch;
+  const PayBreakdownScreen({super.key, this.autoFetch = false});
 
   @override
   State<PayBreakdownScreen> createState() => _PayBreakdownScreenState();
@@ -33,6 +35,33 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
   bool _isRetrying = false;
   bool _isCached = false;
   String? _errorMessage;
+  int _floorWindowMinutes = 60;
+  bool _hasEvaluatedBlock = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoFetch) {
+      _fetchEvaluationState();
+    }
+  }
+
+  Future<void> _fetchEvaluationState() async {
+    try {
+      final config = await ApiService.getPayConfig().timeout(const Duration(seconds: 1));
+      final win = int.tryParse(config['floor_window_minutes']?.toString() ?? '') ?? 60;
+      final riderStats = await CoreApiService.getTodayStats().timeout(const Duration(seconds: 1));
+      final stats = riderStats['stats'] as Map<String, dynamic>? ?? {};
+      final activeHours = (stats['active_hours_today'] as num?)?.toDouble() ?? 0.0;
+      final deliveries = (stats['deliveries_today'] as num?)?.toInt() ?? 0;
+      if (mounted) {
+        setState(() {
+          _floorWindowMinutes = win;
+          _hasEvaluatedBlock = deliveries > 0 && (activeHours * 60) >= win;
+        });
+      }
+    } catch (_) {}
+  }
 
   // Fallback defaults for developer launch without arguments
   String _orderId = '';
@@ -100,6 +129,12 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
         } else if (args['pay_calculation_result'] is Map<String, dynamic>) {
           _payResult = PayResult.fromJson(args['pay_calculation_result'] as Map<String, dynamic>);
         }
+      }
+      if (args['has_evaluated_block'] != null) {
+        _hasEvaluatedBlock = args['has_evaluated_block'] as bool;
+      }
+      if (args['floor_window_minutes'] != null) {
+        _floorWindowMinutes = int.tryParse(args['floor_window_minutes'].toString()) ?? 60;
       }
     }
 
@@ -806,7 +841,7 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
                       ),
                     ),
                     Text(
-                      'Floor evaluated after 60 min on orders',
+                      'Floor evaluated after $_floorWindowMinutes min on orders',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         color: FairDropColors.slateMuted,
@@ -816,13 +851,29 @@ class _PayBreakdownScreenState extends State<PayBreakdownScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                r.hourlyEarningsSoFar > 0 ? '${formatCurrency(r.hourlyEarningsSoFar)}/hr' : '—',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: FairDropColors.brandGreen,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _hasEvaluatedBlock && r.hourlyEarningsSoFar > 0
+                        ? '${formatCurrency(r.hourlyEarningsSoFar)}/hr'
+                        : '—',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: FairDropColors.brandGreen,
+                    ),
+                  ),
+                  if (!_hasEvaluatedBlock)
+                    Text(
+                      'after $_floorWindowMinutes engaged min',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: FairDropColors.slateMuted,
+                      ),
+                    ),
+                ],
               ),
             ],
           ),

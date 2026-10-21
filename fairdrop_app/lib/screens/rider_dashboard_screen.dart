@@ -30,12 +30,14 @@ class RiderDashboardScreen extends StatefulWidget {
   final List<dynamic>? initialEarnings;
   final bool autoFetch;
   final String? initialErrorMessage;
+  final int initialFloorWindowMinutes;
 
   const RiderDashboardScreen({
     super.key,
     this.initialEarnings,
     this.autoFetch = true,
     this.initialErrorMessage,
+    this.initialFloorWindowMinutes = 60,
   });
 
   @override
@@ -55,6 +57,10 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   int _totalDeliveries = 0;
   double _totalFloorTopup = 0.0;
   double _engagedHours = 0.0;
+  int _floorWindowMinutes = 60;
+
+  bool get _hasEvaluatedBlock =>
+      _totalDeliveries > 0 && (_engagedHours * 60) >= _floorWindowMinutes;
 
   // Track expanded delivery items
   final Set<String> _expandedOrderIds = {};
@@ -62,6 +68,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   @override
   void initState() {
     super.initState();
+    _floorWindowMinutes = widget.initialFloorWindowMinutes;
     WidgetsBinding.instance.addObserver(this);
 
     if (widget.initialErrorMessage != null) {
@@ -148,6 +155,15 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
       final rawList = response['earnings'] as List<dynamic>? ?? [];
       final topup = double.tryParse(response['total_floor_topup']?.toString() ?? '') ?? 0.0;
       final engagedHrs = double.tryParse(response['engaged_hours']?.toString() ?? '') ?? 0.0;
+
+      try {
+        final cfg = await ApiService.getPayConfig().timeout(
+          const Duration(seconds: 1),
+        );
+        if (cfg['floor_window_minutes'] != null) {
+          _floorWindowMinutes = (cfg['floor_window_minutes'] as num).toInt();
+        }
+      } catch (_) {}
 
       if (mounted) {
         _applyEarnings(rawList, totalFloorTopup: topup, engagedHours: engagedHrs);
@@ -278,10 +294,13 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
               child: _buildStatCard(
                 icon: Icons.speed_rounded,
                 label: 'Avg Hourly Rate',
-                value: _engagedHours > 0
+                value: _hasEvaluatedBlock
                     ? '₹${_avgHourlyRate.toStringAsFixed(1)}/hr'
                     : '—',
-                color: _avgHourlyRate >= 70.0
+                sublabel: _hasEvaluatedBlock
+                    ? null
+                    : 'after $_floorWindowMinutes engaged min',
+                color: _hasEvaluatedBlock && _avgHourlyRate >= 70.0
                     ? FairDropColors.brandGreen
                     : FairDropColors.warningAmber,
                 valueKey: 'summary_avg_hourly_rate',
@@ -307,6 +326,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     required IconData icon,
     required String label,
     required String value,
+    String? sublabel,
     required Color color,
     required String valueKey,
   }) {
@@ -351,6 +371,18 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
               color: FairDropColors.slateMuted,
             ),
           ),
+          if (sublabel != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              sublabel,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: FairDropColors.slateMuted,
+              ),
+            ),
+          ],
+
         ],
       ),
     );
@@ -359,8 +391,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   // ── 2. Statutory Floor Status Banner (FR-32) ──────────────────────────────
   Widget _buildFloorStatusBanner() {
     const double statutoryFloor = 70.0;
-    final bool isProtected = _totalDeliveries > 0 && _avgHourlyRate >= statutoryFloor;
-    final bool isCompliant = _totalDeliveries == 0 || isProtected;
+    final bool hasEvaluatedBlock = _hasEvaluatedBlock;
+    final bool isProtected = hasEvaluatedBlock && _avgHourlyRate >= statutoryFloor;
+    final bool isCompliant = hasEvaluatedBlock && isProtected;
 
     return Container(
       key: const Key('statutory_floor_status_banner'),
@@ -369,15 +402,15 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCompliant ? FairDropColors.brandGreen : FairDropColors.warningAmber,
+          color: hasEvaluatedBlock ? (isCompliant ? FairDropColors.brandGreen : FairDropColors.warningAmber) : FairDropColors.mintBorder,
           width: 1.5,
         ),
       ),
       child: Row(
         children: [
           Icon(
-            isCompliant ? Icons.verified_rounded : Icons.info_rounded,
-            color: isCompliant ? FairDropColors.brandGreen : FairDropColors.warningAmber,
+            hasEvaluatedBlock ? (isCompliant ? Icons.verified_rounded : Icons.info_rounded) : Icons.hourglass_empty_rounded,
+            color: hasEvaluatedBlock ? (isCompliant ? FairDropColors.brandGreen : FairDropColors.warningAmber) : FairDropColors.slateMuted,
             size: 22,
           ),
           const SizedBox(width: 10),
@@ -386,10 +419,10 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _totalDeliveries == 0
-                      ? 'Statutory Floor Guarantee: Protected'
-                      : _engagedHours < 1.0
-                          ? 'Floor evaluated after 60 min on orders'
+                  !hasEvaluatedBlock
+                      ? 'Floor evaluated after $_floorWindowMinutes min on orders'
+
+
                           : isProtected
                               ? 'Statutory Floor Guarantee: Protected'
                               : 'Statutory Floor: Auto-Topup Active',
@@ -401,7 +434,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                 ),
                 Text(
                   _engagedHours > 0
-                      ? 'Minimum guaranteed wage: ₹${statutoryFloor.toStringAsFixed(0)}/hr • ${_engagedHours.toStringAsFixed(1)} hrs active'
+                      ? (_engagedHours < 1.0
+                          ? 'Minimum guaranteed wage: ₹${statutoryFloor.toStringAsFixed(0)}/hr • ${(_engagedHours * 60).round() == 0 ? 1 : (_engagedHours * 60).round()} min active'
+                          : 'Minimum guaranteed wage: ₹${statutoryFloor.toStringAsFixed(0)}/hr • ${_engagedHours.toStringAsFixed(1)} hrs active')
                       : 'Minimum guaranteed wage: ₹${statutoryFloor.toStringAsFixed(0)}/hr • —',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 11,
@@ -414,21 +449,25 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: isCompliant
+              color: !hasEvaluatedBlock
+                  ? FairDropColors.slateMuted.withValues(alpha: 0.1)
+                  : isCompliant
                   ? FairDropColors.mintBg
                   : FairDropColors.warningAmber.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              _totalDeliveries == 0
-                  ? 'COMPLIANT'
+              !hasEvaluatedBlock
+                  ? 'Not yet evaluated'
                   : isProtected
                       ? 'COMPLIANT'
                       : 'TOP-UP APPLIED',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
-                color: isCompliant
+                color: !hasEvaluatedBlock
+                    ? FairDropColors.slateMuted
+                    : isCompliant
                     ? FairDropColors.brandGreen
                     : FairDropColors.warningAmber,
               ),
@@ -805,7 +844,12 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                   _buildBreakdownRow(
                     key: Key('breakdown_hourly_rate_$orderId'),
                     label: '7. Cumulative Hourly Rate So Far',
-                    value: hourlySoFar > 0 ? '₹${hourlySoFar.toStringAsFixed(1)}/hr' : '—',
+                    value: _hasEvaluatedBlock && hourlySoFar > 0
+                        ? '₹${hourlySoFar.toStringAsFixed(1)}/hr'
+                        : '—',
+                    subtitle: _hasEvaluatedBlock
+                        ? null
+                        : 'after $_floorWindowMinutes engaged min',
                     color: FairDropColors.brandGreen,
                     isBold: true,
                   ),
@@ -821,6 +865,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     required Key key,
     required String label,
     required String value,
+    String? subtitle,
     required Color color,
     bool isBold = false,
   }) {
@@ -831,13 +876,27 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: Text(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
               label,
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11.5,
                 fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
                 color: FairDropColors.brandNavy,
               ),
+            ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: FairDropColors.slateMuted,
+                    ),
+                  ),
+              ],
             ),
           ),
           Text(

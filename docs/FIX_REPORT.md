@@ -36,7 +36,8 @@
 | **F23** | Support string menu item IDs (`item-101`, `item-102`, `item-103`) in core-service schemas, seed, and availability toggles (FR-63, FR-64) | **FIXED** | `8a67564` | `core-service/src/modules/restaurants/restaurant.model.js`<br>`core-service/src/modules/restaurants/restaurant.controller.js`<br>`core-service/tests/restaurants.test.js`<br>`scripts/seed.js` | `core-service npm test`: 78/78 passed;<br>Both seeded and newly created menu items toggle availability by string ID |
 | **F24** | FairDrop per-order incentive (`incentive_per_order` default 17.04); 7-line ledger (Base, Distance, Surge, Wait, FairDrop Incentive, Total Delivery Pay, Effective Hourly Rate); updated Shift card, Offer card (+₹17.04 FairDrop incentive), Acceptance screen, Active meter, Dashboard, and Admin Active Config; rename payout labels to Estimated (R20) | **FIXED** | `ed1ee0d` | `database/mysql/schema.sql`<br>`scripts/seed.js`<br>`pay-service/src/payEngine.js`<br>`pay-service/src/routes/payRoutes.js`<br>`pay-service/src/routes/adminRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`core-service/src/modules/riders/rider.controller.js`<br>`docs/FairDrop_Flutter_App_PRD_v2.1.md`<br>`fairdrop_app/lib/models/pay_result.dart`<br>`fairdrop_app/lib/screens/admin_panel_screen.dart`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/order_acceptance_screen.dart`<br>`fairdrop_app/lib/screens/active_delivery_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/test/admin_panel_test.dart`<br>`fairdrop_app/test/f16_floor_redesign_test.dart`<br>`fairdrop_app/test/order_acceptance_test.dart` | `pay-service npm test`: 33/33 passed;<br>`core-service npm test`: 78/78 passed;<br>`flutter test`: 135/135 passed;<br>`flutter analyze`: 0 issues;<br>**Assumption**: Floor top-up still compares block pay to the floor, with total pay now including the incentive. |
 | **F25** | Analytics total earnings comparison; Actual Deliveries mode shows split (`order pay ₹Y + incentive ₹Z`) with Zomato ladder incentive (₹0 below 19 orders); remove ₹20/delivery cliff baseline; Scenario chart y-axis = cumulative total earnings ($n \times \text{average order pay} + \text{incentive}$), stating rider's real average or config base+2km rate; parity table with 27-order equality, per-order incentive keeps paying beyond 27 orders, removed 'capped at 27' wording (R20) | **FIXED** | `25a7130` | `pay-service/src/routes/payRoutes.js`<br>`pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/analytics_screen.dart`<br>`fairdrop_app/lib/utils/incentive_analytics.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 33/33 passed;<br>`flutter analyze`: 0 issues;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>Removed ₹20/delivery cliff baseline and 'capped at 27' wording |
-| **F26** | Remove app fallback sample (`ORD-20261019-0001` with `CACHED` badge); show "No completed deliveries yet" on empty deliveries; update `seed.js` to guarantee demo rider has zero history and add second empty rider account `rider_new@fairdrop.in` (R21) | **FIXED** | Pending commit | `fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/test/pay_breakdown_test.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`scripts/seed.js`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/pay_breakdown_test.dart`: 5/5 passed;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>**Source Report**: Client app fallback in `pay_breakdown_screen.dart` lines 38, 86, 106–120 |
+| **F26** | Remove app fallback sample (`ORD-20261019-0001` with `CACHED` badge); show "No completed deliveries yet" on empty deliveries; update `seed.js` to guarantee demo rider has zero history and add second empty rider account `rider_new@fairdrop.in` (R21) | **FIXED** | `271ac9a` | `fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/test/pay_breakdown_test.dart`<br>`fairdrop_app/test/analytics_dashboard_test.dart`<br>`scripts/seed.js`<br>`docs/FIX_REPORT.md` | `flutter analyze`: 0 issues;<br>`flutter test test/pay_breakdown_test.dart`: 5/5 passed;<br>`flutter test test/analytics_dashboard_test.dart`: 11/11 passed;<br>**Source Report**: Client app fallback in `pay_breakdown_screen.dart` lines 38, 86, 106–120 |
+| **F27** | Format engaged time under 1h as 'X min active' (never '0.0 hrs'); gate average hourly rate to ' — ' with 'after N engaged min' (N = floor window) until evaluated; subtitle 'Floor evaluated after N min on orders'; status badge 'Not yet evaluated'; scale statutory floor by windowMinutes / 60 on window override (R23, R24) | **FIXED** | Pending commit | `pay-service/tests/payEngine.test.js`<br>`fairdrop_app/lib/screens/rider_home_screen.dart`<br>`fairdrop_app/lib/screens/rider_dashboard_screen.dart`<br>`fairdrop_app/lib/screens/pay_breakdown_screen.dart`<br>`fairdrop_app/lib/screens/profile_screen.dart`<br>`fairdrop_app/test/pay_breakdown_test.dart`<br>`docs/FIX_REPORT.md` | `pay-service npm test`: 35/35 passed (2 new unit tests);<br>`flutter analyze`: 0 issues;<br>`flutter test test/pay_breakdown_test.dart`: 6/6 passed;<br>Zero 393px layout overflow exceptions |
 
 ---
 
@@ -765,6 +766,46 @@ ca1bb67 fix(pay-service): register both /health and /api/health endpoints (AUDIT
 - `fairdrop_app flutter analyze`: No issues found.
 - `fairdrop_app flutter test test/pay_breakdown_test.dart`: 5/5 passed.
 - `fairdrop_app flutter test test/analytics_dashboard_test.dart`: 11/11 passed.
+
+---
+
+## F27 (R23, R24): Engaged Time Formatting & Hourly Rate Evaluation Gating
+
+### 1. Root Causes & Findings
+- **Unrounded "0.0 hrs" Display**: Engaged time under 1 hour was previously formatted in hours (e.g. `0.0 hrs`, `0.0h`), which feels uninformative and inaccurate for riders working partial hours. Engaged time must be strictly formatted as `X min active` whenever under 60 minutes.
+- **Premature Hourly Rate Evaluation**: In Rider Dashboard, Rider Home (Hub Fairness Index), Pay Breakdown, and Profile, hourly rates were being calculated or displayed before a full statutory floor window (default 60 minutes, configured via `floor_window_minutes`) had been evaluated, leading to inflated or premature rate figures (e.g. dividing a single delivery pay by a fractional hour).
+- **Badge and Subtitle Consistency**: Under 1 completed block, the statutory floor has not yet evaluated. The status badge should display `"Not yet evaluated"` (grey), the average hourly rate should display `" — "`, and the subtitle must state `"after N engaged min"` and `"Floor evaluated after N min on orders"`.
+- **Statutory Floor Scaling Verification (R24)**: Verified that when `floor_window_minutes` is overridden to a value other than 60 (e.g. 10 minutes), `pay-service/src/payEngine.js` already scales the statutory floor proportionally via `round2((minWagePerHour * windowMinutes) / 60)`. (e.g. ₹70 × 10 / 60 = ₹11.67).
+
+### 2. Remediation Applied
+- **`pay-service/tests/payEngine.test.js`**:
+  - Added unit test: `sums engaged time across 3 orders from assigned_at to delivered_at` (15m + 25m + 20m = 60m -> 1 block evaluated, topup calculated against floor 70).
+  - Added unit test: `scales statutory floor by windowMinutes / 60 when window override is active` (10m window, 70 minWage -> floor 11.67).
+- **`fairdrop_app/lib/screens/rider_home_screen.dart`**:
+  - Loaded `_floorWindowMinutes` (default 60).
+  - Shift card subtitle: formats engaged time as `${mins} min active in Kollam` when under 60 mins (never `"0.0 hrs"`).
+  - Hub Fairness Index:
+    - Status badge displays `"Not yet evaluated"` (grey) when evaluated blocks < 1.
+    - "Today's Hub Realized Pay" card displays vertical layout with `" — "`, `"after $_floorWindowMinutes engaged min"`, and `"Not enough completed hours today"`. Tested at 393px width with zero RenderFlex overflow.
+- **`fairdrop_app/lib/screens/rider_dashboard_screen.dart`**:
+  - Loaded `_floorWindowMinutes`.
+  - Average Hourly Rate card: displays `" — "` with `"after $_floorWindowMinutes engaged min"` when completed blocks < 1.
+  - Statutory Floor Compliance banner: subtitle displays `${mins} min active` when under 60 mins; badge displays `"Not yet evaluated"` (grey) when completed blocks < 1, `"COMPLIANT"` or `"TOP-UP APPLIED"` once evaluated.
+  - Itemized delivery tile row 7: displays `" — "` with `"after $_floorWindowMinutes engaged min"` until evaluated.
+- **`fairdrop_app/lib/screens/pay_breakdown_screen.dart`**:
+  - Row 7 (Effective Hourly Rate): displays `" — "` with `"after $_floorWindowMinutes engaged min"` when `has_evaluated_block == false`.
+  - Subtitle states `"Floor evaluated after $_floorWindowMinutes min on orders"`.
+  - Added `autoFetch = false` default to prevent unmocked timer leaks in widget tests.
+- **`fairdrop_app/lib/screens/profile_screen.dart`**:
+  - "Avg earnings": displays `" — "` and `${mins} min active` when under 1 hour.
+- **`fairdrop_app/test/pay_breakdown_test.dart`**:
+  - Added widget test: `renders "—" with "after 60 engaged min" when engaged time is under floor window (F27 / R23)`.
+
+### 3. Verification & Test Evidence
+- `pay-service npm test`: 35/35 passed.
+- `fairdrop_app flutter analyze`: No issues found.
+- `fairdrop_app flutter test`: 137/137 passed.
+- Mobile viewport: Zero RenderFlex layout exceptions at 393px.
 
 ---
 

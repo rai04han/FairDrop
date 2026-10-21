@@ -244,6 +244,64 @@ describe('AUDIT-F16 Statutory Floor Block Engine Tests (evaluateFloorBlocks)', (
     assert.strictEqual(res.completed_blocks[0].topup_amount, 20);
   });
 
+  test('sums engaged time across 3 orders from assigned_at to delivered_at', () => {
+    const orders = [
+      {
+        order_id: 'ORD-SUM-1',
+        assigned_at: '2026-10-21T10:00:00Z',
+        delivered_at: '2026-10-21T10:15:00Z', // 15 mins
+        total_delivery_pay: 30,
+      },
+      {
+        order_id: 'ORD-SUM-2',
+        assigned_at: '2026-10-21T10:30:00Z',
+        delivered_at: '2026-10-21T10:55:00Z', // 25 mins
+        total_delivery_pay: 25,
+      },
+      {
+        order_id: 'ORD-SUM-3',
+        assigned_at: '2026-10-21T11:10:00Z',
+        delivered_at: '2026-10-21T11:30:00Z', // 20 mins
+        total_delivery_pay: 35,
+      },
+    ];
+
+    const res = evaluateFloorBlocks(orders, { windowMinutes: 60, minWagePerHour: 70 });
+    // Total engaged time = 15 + 25 + 20 = 60 mins -> exactly 1 block
+    assert.strictEqual(res.total_engaged_minutes, 60);
+    assert.strictEqual(res.num_completed_blocks, 1);
+    assert.strictEqual(res.carried_minutes, 0);
+    assert.strictEqual(res.completed_blocks.length, 1);
+    // Block 1 has delivery pay = 30 + 25 + 35 = 90 >= floor 70 -> topup = 0
+    assert.strictEqual(res.completed_blocks[0].delivery_pay, 90);
+    assert.strictEqual(res.completed_blocks[0].topup_amount, 0);
+  });
+
+  test('scales statutory floor by windowMinutes / 60 when window override is active', () => {
+    const orders = [
+      {
+        order_id: 'ORD-WINDOW-1',
+        assigned_at: '2026-10-21T10:00:00Z',
+        delivered_at: '2026-10-21T10:08:00Z', // 8 mins (ends in block 1)
+        total_delivery_pay: 8,
+      },
+      {
+        order_id: 'ORD-WINDOW-2',
+        assigned_at: '2026-10-21T10:08:00Z',
+        delivered_at: '2026-10-21T10:12:00Z', // 4 mins (ends in block 2)
+        total_delivery_pay: 5,
+      },
+    ];
+    // Override window = 10 mins, minWagePerHour = 70 -> floor = round2(70 * 10 / 60) = 11.67
+    const res = evaluateFloorBlocks(orders, { windowMinutes: 10, minWagePerHour: 70 });
+    assert.strictEqual(res.num_completed_blocks, 1);
+    assert.strictEqual(res.carried_minutes, 2);
+    assert.strictEqual(res.completed_blocks.length, 1);
+    assert.strictEqual(res.completed_blocks[0].floor_amount, 11.67);
+    assert.strictEqual(res.completed_blocks[0].delivery_pay, 8);
+    assert.strictEqual(res.completed_blocks[0].topup_amount, 3.67); // 11.67 - 8 = 3.67
+  });
+
   test('re-running evaluation never duplicates (idempotency in MySQL floor_topups)', async () => {
     const testRider = 'rider-test-floor-idempotent';
     await pool.execute(
