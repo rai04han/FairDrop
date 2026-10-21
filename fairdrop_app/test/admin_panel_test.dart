@@ -231,7 +231,7 @@ void main() {
 
       // Verify changed items have 'CHANGED' chips and unchanged have 'Same' chips
       expect(find.text('CHANGED'), findsNWidgets(2)); // Base Rate & Wait Threshold changed
-      expect(find.text('Same'), findsNWidgets(4)); // Per-km, surge, wait comp, floor unchanged
+      expect(find.text('Same'), findsNWidgets(5)); // Per-km, surge, incentive, wait comp, floor unchanged
 
       // Verify old values and new values within the dialog
       final dialogFinder = find.byKey(const Key('admin_diff_dialog'));
@@ -298,6 +298,7 @@ void main() {
       expect(submittedParams!['base_rate'], 28.00);
       expect(submittedParams!['per_km_rate'], 14.00);
       expect(submittedParams!['wait_threshold_mins'], 5); // int
+      expect(submittedParams!['incentive_per_order'], 17.04);
       expect(submittedParams!['change_reason'], 'Kerala minimum wage revision 2026');
 
       // Dialog is dismissed

@@ -60,6 +60,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   final _waitThresholdController = TextEditingController();
   final _waitCompController = TextEditingController();
   final _minWageController = TextEditingController();
+  final _incentiveController = TextEditingController();
   final _changeReasonController = TextEditingController();
 
   @override
@@ -85,6 +86,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       _waitThresholdController.text = config['wait_threshold_mins'].toString();
       _waitCompController.text = _formatValue(config['wait_compensation']);
       _minWageController.text = _formatValue(config['min_wage_per_hour']);
+      _incentiveController.text = _formatValue(config['incentive_per_order'] ?? 17.04);
     }
 
     setState(() {
@@ -102,6 +104,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     _waitThresholdController.dispose();
     _waitCompController.dispose();
     _minWageController.dispose();
+    _incentiveController.dispose();
     _changeReasonController.dispose();
     super.dispose();
   }
@@ -206,10 +209,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     final oldMinWage = double.tryParse(_currentConfig?['min_wage_per_hour']?.toString() ?? '0') ?? 0;
     final newMinWage = double.tryParse(_minWageController.text) ?? 0;
 
+    final oldIncentive = double.tryParse(_currentConfig?['incentive_per_order']?.toString() ?? '17.04') ?? 17.04;
+    final newIncentive = double.tryParse(_incentiveController.text) ?? 17.04;
+
     final diffItems = [
       _DiffItem('Base Rate', '₹${oldBase.toStringAsFixed(2)}', '₹${newBase.toStringAsFixed(2)}', oldBase != newBase),
       _DiffItem('Per-Km Rate', '₹${oldPerKm.toStringAsFixed(2)}/km', '₹${newPerKm.toStringAsFixed(2)}/km', oldPerKm != newPerKm),
       _DiffItem('Surge Bonus', '₹${oldSurge.toStringAsFixed(2)}', '₹${newSurge.toStringAsFixed(2)}', oldSurge != newSurge),
+      _DiffItem('FairDrop Incentive', '₹${oldIncentive.toStringAsFixed(2)}', '₹${newIncentive.toStringAsFixed(2)}', oldIncentive != newIncentive),
       _DiffItem('Wait Threshold', '$oldWaitThreshold min', '$newWaitThreshold min', oldWaitThreshold != newWaitThreshold),
       _DiffItem('Wait Comp', '₹${oldWaitComp.toStringAsFixed(2)}', '₹${newWaitComp.toStringAsFixed(2)}', oldWaitComp != newWaitComp),
       _DiffItem('Min Wage Floor', '₹${oldMinWage.toStringAsFixed(2)}/hr', '₹${newMinWage.toStringAsFixed(2)}/hr', oldMinWage != newMinWage),
@@ -401,6 +408,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           'base_rate': double.parse(_baseRateController.text),
           'per_km_rate': double.parse(_perKmRateController.text),
           'surge_bonus': double.parse(_surgeBonusController.text),
+          'incentive_per_order': double.parse(_incentiveController.text),
           'wait_threshold_mins': int.parse(_waitThresholdController.text),
           'wait_compensation': double.parse(_waitCompController.text),
           'min_wage_per_hour': double.parse(_minWageController.text),
@@ -412,6 +420,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           baseRate: double.parse(_baseRateController.text),
           perKmRate: double.parse(_perKmRateController.text),
           surgeBonus: double.parse(_surgeBonusController.text),
+          incentivePerOrder: double.parse(_incentiveController.text),
           waitThresholdMins: int.parse(_waitThresholdController.text),
           waitCompensation: double.parse(_waitCompController.text),
           minWagePerHour: double.parse(_minWageController.text),
@@ -809,6 +818,27 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                         final num = double.tryParse(val);
                         if (num == null) return 'Invalid number';
                         if (num <= 0) return 'Must be > 0';
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildValidatedField(
+                      key: const Key('admin_incentive_field'),
+                      controller: _incentiveController,
+                      label: 'FairDrop Incentive (₹/order)',
+                      icon: Icons.card_giftcard,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) return 'Required';
+                        final num = double.tryParse(val);
+                        if (num == null) return 'Invalid number';
+                        if (num < 0) return 'Must be ≥ 0';
                         return null;
                       },
                     ),

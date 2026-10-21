@@ -87,6 +87,7 @@ async function savePayConfig(req, res) {
       wait_threshold_mins,
       wait_compensation,
       min_wage_per_hour,
+      incentive_per_order,
       effective_from,
       change_reason,
     } = req.body;
@@ -120,6 +121,10 @@ async function savePayConfig(req, res) {
       wait_compensation: parseFloat(wait_compensation),
       min_wage_per_hour: parseFloat(min_wage_per_hour),
     };
+
+    if (incentive_per_order !== undefined && incentive_per_order !== null && incentive_per_order !== '') {
+      numericFields.incentive_per_order = parseFloat(incentive_per_order);
+    }
 
     for (const [field, value] of Object.entries(numericFields)) {
       if (isNaN(value) || value < 0) {
@@ -193,14 +198,18 @@ async function savePayConfig(req, res) {
     }
 
     const createdBy = req.user.id ? String(req.user.id) : (req.user.role || 'admin');
+    const incentiveVal = numericFields.incentive_per_order !== undefined
+      ? numericFields.incentive_per_order
+      : 17.04;
 
     // 6. Insert new config row
     const [result] = await pool.execute(
       `INSERT INTO pay_configs
          (base_rate, per_km_rate, surge_bonus,
           wait_threshold_mins, wait_compensation, min_wage_per_hour,
+          incentive_per_order,
           effective_from, is_active, created_by, change_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)`,
       [
         numericFields.base_rate,
         numericFields.per_km_rate,
@@ -208,6 +217,7 @@ async function savePayConfig(req, res) {
         thresholdNum,
         numericFields.wait_compensation,
         numericFields.min_wage_per_hour,
+        incentiveVal,
         effectiveFromStr,
         createdBy,
         change_reason.trim(),

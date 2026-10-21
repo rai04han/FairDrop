@@ -145,23 +145,29 @@ class ApiService {
     required int waitThresholdMins,
     required double waitCompensation,
     required double minWagePerHour,
+    double? incentivePerOrder,
     required String effectiveFrom,
     required String changeReason,
   }) async {
     final headers = await _authHeaders();
+    final body = <String, dynamic>{
+      'base_rate': baseRate,
+      'per_km_rate': perKmRate,
+      'surge_bonus': surgeBonus,
+      'wait_threshold_mins': waitThresholdMins,
+      'wait_compensation': waitCompensation,
+      'min_wage_per_hour': minWagePerHour,
+      'effective_from': effectiveFrom,
+      'change_reason': changeReason,
+    };
+    if (incentivePerOrder != null) {
+      body['incentive_per_order'] = incentivePerOrder;
+    }
+
     final response = await _withTimeout(http.put(
       Uri.parse('$_baseUrl/api/admin/pay-config'),
       headers: headers,
-      body: jsonEncode({
-        'base_rate': baseRate,
-        'per_km_rate': perKmRate,
-        'surge_bonus': surgeBonus,
-        'wait_threshold_mins': waitThresholdMins,
-        'wait_compensation': waitCompensation,
-        'min_wage_per_hour': minWagePerHour,
-        'effective_from': effectiveFrom,
-        'change_reason': changeReason,
-      }),
+      body: jsonEncode(body),
     ));
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
