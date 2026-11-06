@@ -1,166 +1,265 @@
 # FairDrop
 
-**Pay Transparency & Equity Engine for Gig Delivery Workers**
-
-MCA Mini Project — 23MCAM307 | TKM College of Engineering, Kollam, Kerala
+Transparent Pay and Algorithmic Equity Engine for Last-Mile Food Delivery Workers
 
 ## Problem
 
-Gig delivery platforms in India use threshold-based ("cliff") incentive structures and opaque algorithmic management. Workers are forced into 10–12 hour workdays, penalized for factors outside their control, and assigned geographically unfair orders. No platform in India currently scores above 6/10 on Fairwork India's five-principle evaluation (Fairwork India Ratings 2024).
+Gig delivery platforms in India rely on opaque dynamic pay algorithms, arbitrary delay penalties, and threshold-based ("cliff") bonus targets that compel couriers into hazardous 10-to-12-hour workdays.
+Couriers bear uncompensated restaurant waiting times, out-of-zone dispatches without return guarantees, and sub-minimum wage hourly returns with zero upfront financial transparency.
+No major food delivery platform in India scored higher than six out of ten on the Fairwork India Ratings 2024 across the five foundational principles of platform work.
+FairDrop establishes an operationally viable platform architecture that guarantees upfront formula visibility, spatial zone protections, linear incentives, and statutory wage floor compliance.
 
-FairDrop proposes and implements transparent, worker-fair pay policies that remain operationally viable for the platform.
+## Features by Role
 
-## What FairDrop Addresses
+- **Rider**:
+  - Upfront formula transparency and guaranteed estimated payout displayed before accepting an order.
+  - Line-by-line seven-item delivery ledger detailing base pay, distance earnings, surge bonus, wait compensation, and linear incentives.
+  - Zero-penalty order decline without hidden algorithmic deprioritization or shadow-banning.
+  - Out-of-zone dispatch notification requiring explicit consent, paired with automatic hub reassignment upon delivery.
+  - Automatic restaurant wait-time tracking with statutory wait compensation credited upon delivery completion.
+  - Statutory minimum wage floor compliance tracking evaluated over completed 60-minute blocks of engaged delivery time.
+  - Shift dashboard and earnings analytics comparing linear incentives against traditional cliff-tier structures.
+- **Customer**:
+  - Spatial restaurant discovery filtered by active service zones.
+  - Delivery pin selection with haversine distance calculation to merchant partners.
+  - Clean billing structure where customer item subtotal equals total payable, with zero hidden platform, delivery, or surge markups.
+  - Live inventory defense blocking out-of-stock or disabled dishes directly in the cart.
+  - Seamless checkout flow with automated kitchen order dispatch and status tracking.
+- **Restaurant**:
+  - Menu catalog management with custom item pricing and food preparation durations.
+  - Instant item availability toggling with backend-enforced rejection of unavailable items.
+  - Kitchen display feed featuring live order status transitions and preparation countdown timers.
+- **Admin**:
+  - Inspection of active platform pay configurations and historical wage rate revisions.
+  - Pay configuration updates governed by an enforced seven-day advance notice rule.
+  - Audit logging of policy changes citing fair work compliance standards.
 
-- **Incentive cliff trap** — Cliff bonus replaced with linear per-delivery pay
-- **Out-of-zone assignment** — Dynamic zone reassignment with a configurable radius cap
-- **Unverified delay penalties** — Delay context flags with verification architecture (mocked in prototype)
-- **Pay opacity** — Formula published to rider before acceptance; line-by-line breakdown after delivery
-- **Restaurant wait time** — Configurable wait compensation threshold *(partial)*
-- **Minimum earnings floor** — Configurable floor aligned with Kerala minimum wage *(partial)*
+## Pay Formula
 
-## What FairDrop Does Not Address
+FairDrop calculates delivery compensation using a deterministic, transparent formula published to the courier prior to dispatch:
 
-- Real GPS tracking or live location
-- Real payment gateway or fund disbursement
-- Live Traffic / Railway API (architecture documented; prototype uses mock flags)
-- Union recognition or collective bargaining (out of scope)
-- Production-grade scaling or security hardening
+$$\text{Total Delivery Pay} = \text{Base Rate} + (\text{Distance (km)} \times \text{Per-Km Rate}) + \text{Surge Bonus} + \text{Wait Compensation} + \text{FairDrop Incentive}$$
+
+- **Base Rate**: Fixed base compensation per completed delivery (baseline: INR 15.00).
+- **Distance Pay**: Metered distance in kilometres multiplied by the active distance rate (baseline: INR 6.00/km).
+- **Surge Bonus**: Flat incentive applied when surge conditions are active in the dispatch zone (baseline: INR 20.00).
+- **Wait Compensation**: Flat compensation awarded when verified restaurant waiting time exceeds the configured threshold (baseline: INR 10.00).
+- **FairDrop Incentive**: Linear per-order incentive replacing cliff bonuses (baseline: INR 17.04 per order, derived from standard 27-order ladder targets).
+- **Statutory Wage Floor**: Minimum wage floor protection (baseline: INR 70.00/hr, benchmarked against Kerala minimum wage standards) evaluated across completed 60-minute blocks of cumulative engaged order time, with shortfalls topped up automatically.
+
+All formula parameters are configurable by platform administrators via the administrative API.
+
+## Architecture
+
+The system operates as a monorepo consisting of two backend microservices communicating via authenticated HTTP and a unified Flutter mobile application:
+
+```mermaid
+flowchart TD
+    subgraph Mobile["Flutter Mobile Client (fairdrop_app)"]
+        UI["Role-Based Interface<br/>(Rider / Customer / Restaurant / Admin)"]
+        State["Provider State Management & API Clients"]
+        UI --> State
+    end
+
+    subgraph CoreService["Core Service (Port 3003)"]
+        CoreAPI["Express 5 REST API & JWT Middleware"]
+        AuthMod["Auth & Role Controller"]
+        OrderMod["Order Lifecycle & Allocation Engine"]
+        ZoneMod["Spatial Zone Management (2dsphere)"]
+        RestMod["Restaurant Menu & Inventory Controller"]
+        MongoDB[(MongoDB Atlas<br/>Users, Orders, Zones, Menus)]
+        
+        CoreAPI --> AuthMod
+        CoreAPI --> OrderMod
+        CoreAPI --> ZoneMod
+        CoreAPI --> RestMod
+        AuthMod & OrderMod & ZoneMod & RestMod --> MongoDB
+    end
+
+    subgraph PayService["Pay Service (Port 3001)"]
+        PayAPI["Express 4 REST API & Middleware"]
+        PayEngine["Pure Pay Engine (payEngine.js)"]
+        ConfigEngine["Admin Pay Configuration Engine"]
+        MySQL[(MySQL 8.x<br/>Riders, Pay Configs, Deliveries, Earnings)]
+        
+        PayAPI --> PayEngine
+        PayAPI --> ConfigEngine
+        PayEngine & ConfigEngine --> MySQL
+    end
+
+    State -->|"HTTP REST / JWT"| CoreAPI
+    State -->|"HTTP REST / JWT"| PayAPI
+    OrderMod -->|"POST /api/pay/calculate<br/>(Internal Service Call)"| PayAPI
+```
+
+For inter-service calculation specifications, refer to the [API Contract](docs/api-contract.md). For detailed product specifications, refer to the [Product Requirements Document](docs/FairDrop_Flutter_App_PRD_v2.1.md).
 
 ## Tech Stack
 
-| Layer | Technology | Port | Owner |
-|---|---|---|---|
-| Pay Engine | Node.js + Express + MySQL | 3001 | Raihan |
-| Zone Assignment | Node.js + Express + MySQL | 3002 | Raihan |
-| Auth | Node.js + Express + MongoDB | 3003 | Harikrishnan |
-| Order Flow | Node.js + Express + MongoDB | 3004 | Harikrishnan |
-| Frontend | Flutter (Dart) — Android | — | Shared |
+| Layer | Technology | Runtime / Port | Data Store / Storage | Responsibility |
+|---|---|---|---|---|
+| Core Service | Node.js, Express 5 | Port 3003 | MongoDB (GeoJSON 2dsphere) | Authentication, orders, spatial zone queries, restaurant menus |
+| Pay Service | Node.js, Express 4 | Port 3001 | MySQL 8.x | Pure pay calculation, earnings ledger, 7-day notice pay configs |
+| Mobile Client | Flutter, Dart | Android / Web | flutter_secure_storage, SharedPreferences | Multi-role user interface, Provider state, OpenStreetMap rendering |
+| Spatial Engine | Mongoose 2dsphere, Turf/Haversine | Built-in | GeoJSON Polygons | Point-in-polygon assignment, distance metering, boundary checks |
+| Test Runner | Node.js built-in test runner, Flutter test | CLI | In-memory / Isolated DB | Unit, integration, widget, and end-to-end smoke verification |
 
-## Project Structure
+## Repo Structure
 
-```
-FairDrop/
-├── pay-service/                    # Pay Engine + Admin Config (Port 3001)
-│   ├── src/
-│   │   ├── server.js               # Express entry point
-│   │   ├── db.js                   # MySQL connection pool
-│   │   ├── payEngine.js            # Pure pay calculation logic (no DB, no HTTP)
-│   │   ├── seed.js                 # Database initialization script
-│   │   └── routes/
-│   │       ├── payRoutes.js        # POST /api/pay/calculate, GET /api/pay/history
-│   │       └── adminRoutes.js      # GET/PUT /api/admin/pay-config
-│   ├── config/
-│   │   └── constants.js            # Pay constants (Kerala baseline defaults)
-│   ├── tests/
-│   │   └── payEngine.test.js       # 24 unit tests (Node.js built-in runner)
-│   ├── package.json
-│   └── .env.example                # Environment variable template
-├── database/
-│   ├── mysql/schema.sql            # Pay Engine tables (riders, pay_configs, deliveries, earnings)
-│   └── mongodb/collections.md      # Auth/Order collection design (Harikrishnan)
-└── docs/
-    └── api-contract.md             # POST /api/pay/calculate — finalized contract
-```
+- `.env.example`: Template for monorepo root environment variables used by automation scripts.
+- `.gitignore`: Git configuration specifying intentionally untracked build files and dependencies.
+- `README.md`: Project summary, architecture, pay formulas, and developer instructions.
+- `core-service/`: Node.js and Express service managing authentication, orders, restaurants, and spatial zones on Port 3003.
+- `database/`: Database schema definitions, MySQL initialization scripts, and MongoDB collection structures.
+- `docs/`: Product Requirements Document and inter-service API contract specifications.
+- `fairdrop_app/`: Cross-platform Flutter application providing interfaces for riders, customers, restaurants, and administrators.
+- `package.json`: Monorepo npm configuration defining unified build, test, seed, and smoke orchestration scripts.
+- `package-lock.json`: Dependency lockfile pinning exact versions for root npm utilities.
+- `pay-service/`: Node.js and Express service hosting the pure pay calculation engine and audit ledger on Port 3001.
+- `scripts/`: Monorepo utility scripts including database seeding and automated 14-step smoke test execution.
 
-## Getting Started
+## Setup and Run
 
 ### Prerequisites
 
-- **Node.js** v18+ (`node --version`)
-- **MySQL** 8.x (`mysql --version`)
+- Node.js 18 LTS or higher
+- MySQL Community Server 8.x
+- MongoDB 6.x or MongoDB Atlas cluster
+- Flutter SDK 3.13 or higher with Android platform tools
 
-### 1. Clone and install
+### 1. Environment Configuration
 
-```bash
-git clone https://github.com/rai04han/FairDrop.git
-cd FairDrop/pay-service
-npm install
-```
-
-### 2. Configure environment
+Copy the example environment files in both services and root:
 
 ```bash
 cp .env.example .env
+cp core-service/.env.example core-service/.env
+cp pay-service/.env.example pay-service/.env
 ```
 
-Edit `.env` and set your MySQL password:
+Configure credentials in each `.env` file using placeholder values:
 
-```
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_mysql_password
-DB_NAME=fairdrop_pay
-PORT=3001
+- In `core-service/.env`:
+  ```ini
+  PORT=3003
+  MONGODB_URI=mongodb://localhost:27017/fairdrop_core
+  JWT_SECRET=your_jwt_secret_key_here
+  JWT_EXPIRES_IN=24h
+  PAY_SERVICE_URL=http://localhost:3001
+  ```
+
+- In `pay-service/.env`:
+  ```ini
+  PORT=3001
+  DB_HOST=localhost
+  DB_PORT=3306
+  DB_USER=root
+  DB_PASSWORD=your_mysql_password_here
+  DB_NAME=fairdrop_pay
+  JWT_SECRET=your_jwt_secret_key_here
+  ```
+
+### 2. Dependency Installation
+
+Install dependencies across the monorepo:
+
+```bash
+npm install
+cd core-service && npm install && cd ..
+cd pay-service && npm install && cd ..
+cd fairdrop_app && flutter pub get && cd ..
 ```
 
-### 3. Initialize the database
+### 3. Database Initialization
+
+Execute the master seed script to initialize MongoDB collections and MySQL schema with default zones, accounts, and baseline pay parameters:
 
 ```bash
 npm run seed
 ```
 
-This creates the `fairdrop_pay` database, tables, Kerala baseline pay config, and 2 demo riders.
+### 4. Running Backend Services
 
-### 4. Start the server
+Start both microservices in separate terminal sessions:
 
 ```bash
+# Terminal 1: Pay Service
+cd pay-service
+npm start
+
+# Terminal 2: Core Service
+cd core-service
 npm start
 ```
 
-Server runs on `http://localhost:3001`. Verify with:
+Verify service availability:
 
 ```bash
 curl http://localhost:3001/api/health
+curl http://localhost:3003/api/health
 ```
 
-## API Endpoints
+### 5. Running the Mobile Application
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Health check — verifies server and MySQL connection |
-| `POST` | `/api/pay/calculate` | Calculate pay for a completed delivery ([full contract](docs/api-contract.md)) |
-| `GET` | `/api/pay/history/:rider_id` | Earnings history for rider dashboard chart |
-| `GET` | `/api/admin/pay-config` | Get active pay configuration |
-| `PUT` | `/api/admin/pay-config` | Update pay config (7-day advance notice enforced) |
-
-## Running Tests
+Launch the Flutter client:
 
 ```bash
-cd pay-service
-npm test
+cd fairdrop_app
+flutter run
 ```
 
-24 unit tests across 7 describe blocks. Uses Node.js built-in test runner — no external test dependencies.
+## Tests
 
-## Pay Constants (Kerala Baseline)
+Execute test suites across backend services, mobile client, and integration smoke pipelines:
 
-| Constant | Value | DB Column |
-|---|---|---|
-| Base rate | ₹15 per delivery | `base_rate` |
-| Per km rate | ₹6/km | `per_km_rate` |
-| Surge bonus | ₹20 (flat) | `surge_bonus` |
-| Wait threshold | 10 minutes | `wait_threshold_mins` |
-| Wait compensation | ₹10 (flat) | `wait_compensation` |
-| Minimum wage floor | ₹70/hr | `min_wage_per_hour` |
+- Core service integration tests:
+  ```bash
+  npm run test:core
+  ```
+- Pay service unit and calculation tests:
+  ```bash
+  npm run test:pay
+  ```
+- Flutter widget and unit tests:
+  ```bash
+  npm run test:flutter
+  ```
+- End-to-end 14-step automated HTTP smoke test:
+  ```bash
+  npm run smoke
+  ```
+- Full monorepo verification suite:
+  ```bash
+  npm run test:all
+  ```
 
-All constants are admin-configurable via `PUT /api/admin/pay-config`.
+## Scope
 
-## Branch Strategy
+### Implemented
 
-| Branch | Purpose | Status |
-|---|---|---|
-| `main` | Stable, merged code | ✓ Active |
-| `core/pay-engine` | Pay Engine Express server + MySQL | ✓ Active |
-| `core/auth` | Auth module — JWT, roles (Harikrishnan) | Scaffold |
-| `core/admin-panel` | Admin Panel API + Flutter screen | Planned |
-| `core/rider-dashboard` | Rider Dashboard + earnings chart | Planned |
+- Pure, deterministic linear pay calculation engine with zero external arithmetic side effects.
+- Line-by-line seven-item ledger with itemized breakdown per completed delivery.
+- Upfront formula and estimated compensation disclosure on order dispatch.
+- GeoJSON polygon spatial zone allocation and automatic zone boundary conflict detection using MongoDB 2dsphere indexing.
+- Out-of-zone delivery detection, courier consent enforcement, and automatic hub reassignment.
+- Restaurant wait-time recording with server-side validation and automated wait compensation.
+- Statutory minimum wage floor protection evaluated over completed 60-minute blocks of engaged delivery time.
+- Administrative pay configuration management enforcing a mandatory seven-day advance notice rule.
+- Multi-role mobile client supporting Rider, Customer, Restaurant, and Admin user journeys.
+- End-to-end automated 14-step HTTP integration smoke test suite.
 
-## References
+### Deliberately Out of Scope
 
-- Fairwork India Ratings 2024 — IIIT Bangalore / Oxford
-- Nair et al., IJCAI 2022 — "Gigs with Guarantees: Achieving Fair Wage for Food Delivery Workers"
-- Rajasthan Platform Based Gig Workers Act, 2023
-- Human Rights Watch, "The Gig Trap," 2025
-- NITI Aayog — India gig workforce 7.7M (2023), projected 23.5M by 2030
+- Hardware GPS tracking and turn-by-turn road routing (straight-line haversine calculation used).
+- Real payment gateway integration and actual banking disbursements (mock payment flow implemented).
+- Live external road traffic and railway gate status APIs (modeled through verified delay flags).
+- Multi-restaurant cart checkouts and customer-facing live driver location tracking.
+- Production-scale clustering, container orchestration, and cloud infrastructure deployment.
+
+## Team
+
+- **Raihan**: Pay Service (Port 3001), MySQL schema and audit ledger, Delivery Summary, Rider Dashboard, Comparative Analytics, Admin Pay Config.
+- **Harikrishnan**: Core Service (Port 3003), MongoDB schema and spatial indexing, Authentication and JWT, Order Lifecycle, Spatial Zone Allocation, Active Delivery Tracking.
+
+Department of Master of Computer Applications, TKM College of Engineering, Kollam, Kerala.  
+MCA Mini Project (Course Code: 23MCAM307).
