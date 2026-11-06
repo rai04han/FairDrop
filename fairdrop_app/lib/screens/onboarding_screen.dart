@@ -344,7 +344,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              'MANDATORY STEP (FR-46)',
+              'MANDATORY STEP',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
